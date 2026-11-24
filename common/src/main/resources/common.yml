@@ -1,0 +1,19 @@
+application:
+  common:
+    http:
+      connect-timeout-ms: "${COMMON_HTTP_CONNECT_TIMEOUT_MS:3000}"
+      response-timeout-ms: "${COMMON_HTTP_RESPONSE_TIMEOUT_MS:5000}"
+      max-in-memory-size-bytes: "${COMMON_HTTP_MAX_IN_MEMORY_SIZE_BYTES:262144}"
+    pagination:
+      default-page-size: "${COMMON_PAGINATION_DEFAULT_PAGE_SIZE:50}"
+      max-page-size: "${COMMON_PAGINATION_MAX_PAGE_SIZE:200}"
+    observability:
+      metric-name-prefix: "${COMMON_OBSERVABILITY_METRIC_NAME_PREFIX:}"
+    resilience:
+      circuit-breaker:
+        failure-rate-threshold: "${COMMON_RESILIENCE_CIRCUIT_BREAKER_FAILURE_RATE_THRESHOLD:50}"
+        sliding-window-size: "${COMMON_RESILIENCE_CIRCUIT_BREAKER_SLIDING_WINDOW_SIZE:100}"
+        minimum-number-of-calls: "${COMMON_RESILIENCE_CIRCUIT_BREAKER_MINIMUM_NUMBER_OF_CALLS:100}"
+        open-state-wait-ms: "${COMMON_RESILIENCE_CIRCUIT_BREAKER_OPEN_STATE_WAIT_MS:60000}"
+      bulkhead:
+        max-concurrent-calls: "${COMMON_RESILIENCE_BULKHEAD_MAX_CONCURRENT_CALLS:25}"
