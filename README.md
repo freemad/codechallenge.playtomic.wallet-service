@@ -19,6 +19,16 @@ You don't have to write the following operations, but we will discuss possible s
 
 The basic structure of a wallet is its identifier and its current balance. If you think you need extra fields, add them. We will discuss it in the interview. 
 
+## Build the shared library
+
+With JDK 25 and Maven 3.9+, run `mvn verify` from the repository root. The
+Maven reactor builds `common` as a plain JAR; it does not run a wallet service.
+The legacy wallet sources remain under `src/`, outside this reactor. The setup
+notes below describe the original exercise scaffold, not a runnable module on
+this branch.
+
+## Original exercise scaffold
+
 So you can focus on these problems, you have here a maven project with a Spring Boot application. It already contains
 the basic dependencies and in-memory version of MongoDB for testing. There are development and test profiles.
 You will need to start a MongoDB instance to run the application. For example, using
