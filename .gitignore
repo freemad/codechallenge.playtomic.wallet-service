@@ -1,5 +1,14 @@
 !.mvn/wrapper/maven-wrapper.jar
 
+# Local agent guides
+/AGENTS.md
+/skills.md
+/LOCAL-HANDOFF.md
+/common/local-drafts/
+
+# Maven build output
+target/
+
 ### STS ###
 .apt_generated
 .classpath
