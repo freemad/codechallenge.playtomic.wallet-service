@@ -63,8 +63,8 @@ class WalletRepositoryConfigurationTest {
     @Test
     void loadsSharedYamlAndBindsOverridesWithoutChangingWalletProfileSettings() {
         assertThat(environment.getProperty("application.common.http.connect-timeout-ms")).isEqualTo("3000");
-        assertThat(environment.getProperty("stripe.simulator.charges-uri")).isEqualTo("http://localhost:9999");
-        assertThat(environment.getProperty("stripe.simulator.refunds-uri"))
+        assertThat(environment.getProperty("wallet.payment-providers.stripe.charges-uri")).isEqualTo("http://localhost:9999");
+        assertThat(environment.getProperty("wallet.payment-providers.stripe.refunds-uri"))
                 .isEqualTo("http://localhost:9999/payments/{payment_id}/refunds");
         assertThat(commonProps.getHttp().getConnectTimeoutMs()).isEqualTo(3000);
         assertThat(commonProps.getObservability().getMetricNamePrefix()).isEmpty();

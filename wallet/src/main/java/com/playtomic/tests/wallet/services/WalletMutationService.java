@@ -6,11 +6,12 @@ import com.playtomic.tests.common.resilience.ReactiveCircuitBreaker;
 import com.playtomic.tests.wallet.enums.WalletOperationType;
 import com.playtomic.tests.wallet.exceptions.WalletMutationException;
 import com.playtomic.tests.wallet.http.stripe.StripeAmountTooSmallException;
-import com.playtomic.tests.wallet.http.stripe.StripeService;
 import com.playtomic.tests.wallet.http.stripe.StripeServiceException;
+import com.playtomic.tests.wallet.models.CardChargeModel;
 import com.playtomic.tests.wallet.models.WalletOperationModel;
 import com.playtomic.tests.wallet.models.WalletOutcome;
 import com.playtomic.tests.wallet.observability.WalletMutationMetrics;
+import com.playtomic.tests.wallet.services.adapter.StripeAdapter;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -37,7 +38,7 @@ public class WalletMutationService {
 
     private final WalletLookupService lookupService;
     private final WalletOperationService operationService;
-    private final StripeService stripe;
+    private final StripeAdapter stripe;
     private final ReactiveCircuitBreaker walletPaymentCircuitBreaker;
     private final WalletMutationMetrics metrics;
     private final WalletOutcomeHandler outcomeHandler;
@@ -95,7 +96,7 @@ public class WalletMutationService {
         String id = operation.getId();
         // Only errors from this provider call are classified as payment outcomes. DB errors propagate.
         return walletPaymentCircuitBreaker.protect(metrics.charge(Mono.defer(() ->
-                        stripe.charge(card, operation.getAmount()))))
+                        stripe.charge(new CardChargeModel(card, operation.getAmount())))))
                 .materialize().flatMap(signal -> {
                     if (signal.isOnNext()) {
                         return operationService.recordReceipt(id, signal.get().getId()).flatMap(WalletOutcome::optionalValue)

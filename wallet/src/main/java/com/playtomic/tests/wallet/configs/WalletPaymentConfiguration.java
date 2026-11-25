@@ -17,8 +17,18 @@ class WalletPaymentConfiguration {
     private static final String PAYMENT_CIRCUIT_BREAKER = "wallet-payment";
 
     @Bean
-    WebClient stripeSimulatorWebClient(NonRetryingWebClientFactory factory, StripeSimulatorProps settings) {
-        return factory.create(settings.getConnectTimeout());
+    WebClient stripeWebClient(NonRetryingWebClientFactory factory, WalletPaymentProviderProps settings) {
+        return factory.create(settings.provider(WalletPaymentProviderProps.STRIPE).getConnectTimeout());
+    }
+
+    @Bean
+    WebClient paypalWebClient(NonRetryingWebClientFactory factory, WalletPaymentProviderProps settings) {
+        return factory.create(settings.provider(WalletPaymentProviderProps.PAYPAL).getConnectTimeout());
+    }
+
+    @Bean
+    WebClient redsysWebClient(NonRetryingWebClientFactory factory, WalletPaymentProviderProps settings) {
+        return factory.create(settings.provider(WalletPaymentProviderProps.REDSYS).getConnectTimeout());
     }
 
     @Bean

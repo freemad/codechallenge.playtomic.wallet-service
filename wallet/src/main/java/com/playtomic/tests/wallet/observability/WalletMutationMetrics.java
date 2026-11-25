@@ -3,7 +3,7 @@ package com.playtomic.tests.wallet.observability;
 import com.playtomic.tests.common.configs.CommonProps;
 import com.playtomic.tests.common.observability.ReactiveOperationMetrics;
 import com.playtomic.tests.wallet.enums.WalletOperationType;
-import com.playtomic.tests.wallet.http.stripe.Payment;
+import com.playtomic.tests.wallet.models.PaymentReceiptModel;
 import com.playtomic.tests.wallet.models.WalletOperationModel;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.stereotype.Component;
@@ -42,7 +42,7 @@ public class WalletMutationMetrics {
                 OPERATION_TAG, operationLabel, STATUS_TAG, result.getStatus().getName().toUpperCase(Locale.ROOT)).increment()));
     }
 
-    public Mono<Payment> charge(Mono<Payment> source) {
+    public Mono<PaymentReceiptModel> charge(Mono<PaymentReceiptModel> source) {
         return charges.measure(source);
     }
 }

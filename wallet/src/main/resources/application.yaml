@@ -27,12 +27,30 @@ wallet:
     stale-pending-age: ${WALLET_RECONCILIATION_STALE_PENDING_AGE:2m}
     receipt-delay: ${WALLET_RECONCILIATION_RECEIPT_DELAY:15s}
     batch-size: ${WALLET_RECONCILIATION_BATCH_SIZE:25}
+  payment-providers:
+    stripe:
+      connect-timeout: ${WALLET_PAYMENT_PROVIDERS_STRIPE_CONNECT_TIMEOUT:2s}
+      request-timeout: ${WALLET_PAYMENT_PROVIDERS_STRIPE_REQUEST_TIMEOUT:5s}
+    paypal:
+      orders-uri: "${WALLET_PAYMENT_PROVIDERS_PAYPAL_ORDERS_URI:${WALLET_SIMULATOR_PAYPAL_ORDERS_URI:http://127.0.0.1:9999/v1/paypal-simulator/v2/checkout/orders}}"
+      connect-timeout: ${WALLET_PAYMENT_PROVIDERS_PAYPAL_CONNECT_TIMEOUT:${WALLET_SIMULATOR_CONNECT_TIMEOUT:2s}}
+      request-timeout: ${WALLET_PAYMENT_PROVIDERS_PAYPAL_REQUEST_TIMEOUT:${WALLET_SIMULATOR_REQUEST_TIMEOUT:5s}}
+    redsys:
+      authorization-uri: "${WALLET_PAYMENT_PROVIDERS_REDSYS_AUTHORIZATION_URI:${WALLET_SIMULATOR_REDSYS_AUTHORIZATION_URI:http://127.0.0.1:9999/v1/redsys-simulator/sis/rest/trataPeticion}}"
+      connect-timeout: ${WALLET_PAYMENT_PROVIDERS_REDSYS_CONNECT_TIMEOUT:${WALLET_SIMULATOR_CONNECT_TIMEOUT:2s}}
+      request-timeout: ${WALLET_PAYMENT_PROVIDERS_REDSYS_REQUEST_TIMEOUT:${WALLET_SIMULATOR_REQUEST_TIMEOUT:5s}}
 ---
 spring.config.activate.on-profile: "${WALLET_DEVELOP_PROFILE:develop}"
 spring.mongodb.uri: "${SPRING_MONGODB_URI:mongodb://localhost:27017/playtomic?directConnection=true&replicaSet=wallet-rs&w=majority}"
-stripe.simulator.charges-uri: "${STRIPE_SIMULATOR_CHARGESURI:https://sandbox.playtomic.io/v1/stripe-simulator/charges}"
-stripe.simulator.refunds-uri: "${STRIPE_SIMULATOR_REFUNDSURI:https://sandbox.playtomic.io/v1/stripe-simulator/payments/{payment_id}/refunds}"
+wallet:
+  payment-providers:
+    stripe:
+      charges-uri: "${WALLET_PAYMENT_PROVIDERS_STRIPE_CHARGES_URI:${STRIPE_SIMULATOR_CHARGESURI:https://sandbox.playtomic.io/v1/stripe-simulator/charges}}"
+      refunds-uri: "${WALLET_PAYMENT_PROVIDERS_STRIPE_REFUNDS_URI:${STRIPE_SIMULATOR_REFUNDSURI:https://sandbox.playtomic.io/v1/stripe-simulator/payments/{payment_id}/refunds}}"
 ---
 spring.config.activate.on-profile: "${WALLET_TEST_PROFILE:test}"
-stripe.simulator.charges-uri: "${STRIPE_SIMULATOR_CHARGESURI:http://localhost:9999}"
-stripe.simulator.refunds-uri: "${STRIPE_SIMULATOR_REFUNDSURI:http://localhost:9999/payments/{payment_id}/refunds}"
+wallet:
+  payment-providers:
+    stripe:
+      charges-uri: "${WALLET_PAYMENT_PROVIDERS_STRIPE_CHARGES_URI:${STRIPE_SIMULATOR_CHARGESURI:http://localhost:9999}}"
+      refunds-uri: "${WALLET_PAYMENT_PROVIDERS_STRIPE_REFUNDS_URI:${STRIPE_SIMULATOR_REFUNDSURI:http://localhost:9999/payments/{payment_id}/refunds}}"

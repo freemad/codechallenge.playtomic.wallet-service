@@ -5,15 +5,16 @@ import com.playtomic.tests.common.models.Error;
 import com.playtomic.tests.common.models.Outcome;
 import com.playtomic.tests.wallet.configs.WalletReconciliationProps;
 import com.playtomic.tests.wallet.enums.WalletErrorCode;
-import com.playtomic.tests.wallet.http.stripe.Payment;
-import com.playtomic.tests.wallet.http.stripe.StripeService;
 import com.playtomic.tests.wallet.http.stripe.StripeServiceException;
 import com.playtomic.tests.wallet.jobs.WalletReconciliationJob;
+import com.playtomic.tests.wallet.models.CardChargeModel;
+import com.playtomic.tests.wallet.models.PaymentReceiptModel;
 import com.playtomic.tests.wallet.models.WalletOperationModel;
 import com.playtomic.tests.wallet.repositories.WalletOperationRepository;
 import com.playtomic.tests.wallet.services.WalletMutationService;
 import com.playtomic.tests.wallet.services.WalletLookupService;
 import com.playtomic.tests.wallet.services.WalletOperationService;
+import com.playtomic.tests.wallet.services.adapter.StripeAdapter;
 import com.playtomic.tests.wallet.services.entity.WalletJobLeaseEntityService;
 import com.playtomic.tests.wallet.services.entity.WalletOperationEntityService;
 import com.playtomic.tests.wallet.services.entity.WalletOutboxEntityService;
@@ -100,7 +101,7 @@ class WalletApplicationIT {
     private WalletOutboxEntityService outbox;
 
     @MockitoBean
-    private StripeService stripe;
+    private StripeAdapter stripe;
 
     private static final Duration DEADLINE = Duration.ofSeconds(15);
     private static final String TEST_CARD = "4111111111111111";
@@ -190,8 +191,8 @@ class WalletApplicationIT {
     @Test
     void concurrentSameKeyTopUpsChargeOnceAndReplayTheOriginalBalance() {
         BigDecimal amount = new BigDecimal("5.25");
-        when(stripe.charge(TEST_CARD, amount)).thenReturn(Mono.delay(Duration.ofMillis(150))
-                .thenReturn(new Payment("payment-concurrent")));
+        when(stripe.charge(new CardChargeModel(TEST_CARD, amount))).thenReturn(Mono.delay(Duration.ofMillis(150))
+                .thenReturn(new PaymentReceiptModel("payment-concurrent")));
         Mono<WalletOperationModel> topUp = mutations.topUp("credit-race", "same-key", amount, "EUR", TEST_CARD)
                 .map(WalletApplicationIT::successfulResult);
         StepVerifier.create(seedWallet("credit-race", "10.00")
@@ -212,7 +213,7 @@ class WalletApplicationIT {
                     assertThat(result.getResultingBalance()).isEqualByComparingTo("15.25");
                 })
                 .expectComplete().verify(DEADLINE);
-        verify(stripe, times(1)).charge(TEST_CARD, amount);
+        verify(stripe, times(1)).charge(new CardChargeModel(TEST_CARD, amount));
         StepVerifier.create(outboxCount("credit-race", "WalletCredited"))
                 .expectNext(1L).expectComplete().verify(DEADLINE);
         StepVerifier.create(mutations.spend("credit-race", "same-key", amount, "EUR"))
@@ -257,7 +258,8 @@ class WalletApplicationIT {
 
     @Test
     void uncertainChargeIsNotDispatchedOnReplay() {
-        when(stripe.charge(TEST_CARD, BigDecimal.ONE)).thenReturn(Mono.error(new StripeServiceException("Timeout")));
+        var charge = new CardChargeModel(TEST_CARD, BigDecimal.ONE);
+        when(stripe.charge(charge)).thenReturn(Mono.error(new StripeServiceException("Timeout")));
         Mono<WalletOperationModel> topUp = mutations.topUp("uncertain", "key", BigDecimal.ONE, "EUR", TEST_CARD)
                 .map(WalletApplicationIT::successfulResult);
         StepVerifier.create(seedWallet("uncertain", "0").thenMany(Flux.concat(topUp, topUp))
@@ -266,7 +268,7 @@ class WalletApplicationIT {
                 .expectComplete().verify(DEADLINE);
         StepVerifier.create(outboxCount("uncertain", "WalletCredited"))
                 .expectNext(0L).expectComplete().verify(DEADLINE);
-        verify(stripe, times(1)).charge(TEST_CARD, BigDecimal.ONE);
+        verify(stripe, times(1)).charge(charge);
     }
 
     @Test

@@ -1,7 +1,7 @@
 package com.playtomic.tests.wallet;
 
-import com.playtomic.tests.wallet.http.stripe.StripeService;
 import com.playtomic.tests.wallet.services.WalletMutationService;
+import com.playtomic.tests.wallet.services.adapter.StripeAdapter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -64,7 +64,7 @@ class WalletOutboxRelayIT {
     private MeterRegistry metrics;
 
     @MockitoBean
-    private StripeService stripe;
+    private StripeAdapter stripe;
 
     @Test
     void publishesCommittedDebitAndAcknowledgesTheOutboxRow() {

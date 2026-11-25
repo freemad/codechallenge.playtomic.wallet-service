@@ -7,10 +7,10 @@ import com.playtomic.tests.common.resilience.ReactiveCircuitBreaker;
 import com.playtomic.tests.wallet.enums.WalletErrorCode;
 import com.playtomic.tests.wallet.enums.WalletOperationStatus;
 import com.playtomic.tests.wallet.enums.WalletOperationType;
-import com.playtomic.tests.wallet.http.stripe.StripeService;
 import com.playtomic.tests.wallet.models.WalletOperationModel;
 import com.playtomic.tests.wallet.models.WalletOutcome;
 import com.playtomic.tests.wallet.observability.WalletMutationMetrics;
+import com.playtomic.tests.wallet.services.adapter.StripeAdapter;
 import com.playtomic.tests.wallet.services.entity.WalletEntityService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -46,7 +46,7 @@ class WalletMutationServiceTest {
     private static final BigDecimal AMOUNT = new BigDecimal("5.00");
 
     private final WalletOperationService operations = mock(WalletOperationService.class);
-    private final StripeService stripe = mock(StripeService.class);
+    private final StripeAdapter stripe = mock(StripeAdapter.class);
     private final WalletMutationMetrics metrics = mock(WalletMutationMetrics.class);
     private final WalletOutcomeHandler outcomeHandler = new WalletOutcomeHandler();
     private final WalletMutationService service = new WalletMutationService(mock(WalletLookupService.class), operations,
