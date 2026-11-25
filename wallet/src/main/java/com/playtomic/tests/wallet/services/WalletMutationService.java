@@ -40,10 +40,11 @@ public class WalletMutationService {
     private final StripeService stripe;
     private final ReactiveCircuitBreaker walletPaymentCircuitBreaker;
     private final WalletMutationMetrics metrics;
+    private final WalletOutcomeHandler outcomeHandler;
 
     public Mono<Outcome<WalletOperationModel, Error>> topUp(String walletId, String key, BigDecimal amount,
                                                              String currency, String creditCardNumber) {
-        return WalletOutcome.from(metrics.mutation(WALLET_OPERATION_TYPE_TOP_UP, Mono.defer(() -> {
+        return outcomeHandler.mutation(metrics.mutation(WALLET_OPERATION_TYPE_TOP_UP, Mono.defer(() -> {
             if (creditCardNumber == null || creditCardNumber.isBlank()) {
                 return Mono.error(invalid("Credit card number is required"));
             }
@@ -54,7 +55,7 @@ public class WalletMutationService {
 
     public Mono<Outcome<WalletOperationModel, Error>> spend(String walletId, String key, BigDecimal amount,
                                                              String currency) {
-        return WalletOutcome.from(metrics.mutation(WALLET_OPERATION_TYPE_SPEND, Mono.defer(() ->
+        return outcomeHandler.mutation(metrics.mutation(WALLET_OPERATION_TYPE_SPEND, Mono.defer(() ->
                 execute(request(walletId, key, amount, currency, WALLET_OPERATION_TYPE_SPEND), reserved -> apply(reserved.getId())))));
     }
 

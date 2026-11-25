@@ -8,6 +8,7 @@ import com.playtomic.tests.wallet.enums.WalletErrorCode;
 import com.playtomic.tests.wallet.mappers.WalletResponseMapperV1;
 import com.playtomic.tests.wallet.models.WalletModel;
 import com.playtomic.tests.wallet.services.WalletLookupService;
+import com.playtomic.tests.wallet.services.WalletOutcomeHandler;
 import com.playtomic.tests.wallet.services.entity.WalletEntityService;
 import org.junit.jupiter.api.Test;
 import org.mapstruct.factory.Mappers;
@@ -70,8 +71,8 @@ class WalletControllerV1Test {
 
     @Test
     void returnsBadRequestForABlankId() {
-        var clientWithValidation = WebTestClient.bindToController(
-                new WalletControllerV1(new WalletLookupService(mock(WalletEntityService.class)), mapper)).build();
+        var lookupWithValidation = new WalletLookupService(mock(WalletEntityService.class), new WalletOutcomeHandler());
+        var clientWithValidation = WebTestClient.bindToController(new WalletControllerV1(lookupWithValidation, mapper)).build();
 
         clientWithValidation.get().uri("/{id}", " ").exchange()
                 .expectStatus().isBadRequest()

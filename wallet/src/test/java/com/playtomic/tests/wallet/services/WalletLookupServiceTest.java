@@ -25,7 +25,7 @@ class WalletLookupServiceTest {
     private static final String ID = "wallet-id";
 
     private final WalletEntityService repository = mock(WalletEntityService.class);
-    private final WalletLookupService service = new WalletLookupService(repository);
+    private final WalletLookupService service = new WalletLookupService(repository, new WalletOutcomeHandler());
 
     @Test
     void mapsStorageFailureToStableCodeWithoutExposingDiagnostics() {
@@ -67,5 +67,17 @@ class WalletLookupServiceTest {
             StepVerifier.create(service.findById(ID))
                     .expectErrorMatches(actual -> actual == failure).verify(DEADLINE);
         }
+    }
+
+    @Test
+    void mapsAnEmptyReadToWalletNotFound() {
+        when(repository.findById(ID)).thenReturn(Mono.empty());
+
+        StepVerifier.create(service.findById(ID))
+                .assertNext(outcome -> {
+                    assertThat(outcome.isFailure()).isTrue();
+                    assertThat(outcome.getError().getCode()).isEqualTo(WalletErrorCode.WALLET_NOT_FOUND);
+                })
+                .expectComplete().verify(DEADLINE);
     }
 }
