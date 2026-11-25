@@ -14,6 +14,7 @@ import com.playtomic.tests.wallet.observability.WalletMutationMetrics;
 import com.playtomic.tests.wallet.services.entity.WalletEntityService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.dao.DataAccessResourceFailureException;
 import reactor.core.publisher.Mono;
@@ -27,7 +28,6 @@ import java.util.concurrent.CancellationException;
 
 import static com.playtomic.tests.wallet.enums.WalletOperationStatus.WALLET_OPERATION_STATUS_PENDING;
 import static com.playtomic.tests.wallet.enums.WalletOperationStatus.WALLET_OPERATION_STATUS_RECEIPT_RECORDED;
-import static com.playtomic.tests.wallet.enums.WalletOperationStatus.WALLET_OPERATION_STATUS_SUCCEEDED;
 import static com.playtomic.tests.wallet.enums.WalletOperationType.WALLET_OPERATION_TYPE_TOP_UP;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -48,13 +48,21 @@ class WalletMutationServiceTest {
     private final WalletOperationService operations = mock(WalletOperationService.class);
     private final StripeService stripe = mock(StripeService.class);
     private final WalletMutationMetrics metrics = mock(WalletMutationMetrics.class);
+    private final WalletOutcomeHandler outcomeHandler = new WalletOutcomeHandler();
     private final WalletMutationService service = new WalletMutationService(mock(WalletLookupService.class), operations,
-            stripe, mock(ReactiveCircuitBreaker.class), metrics);
+            stripe, mock(ReactiveCircuitBreaker.class), metrics, outcomeHandler);
 
     @ParameterizedTest
-    @EnumSource(value = WalletOperationType.class, names = {"WALLET_OPERATION_TYPE_TOP_UP", "WALLET_OPERATION_TYPE_SPEND"})
-    void returnsTheOperationAsOutcomeData(WalletOperationType type) {
-        var result = operation(type, WALLET_OPERATION_STATUS_SUCCEEDED, AMOUNT);
+    @CsvSource({
+            "WALLET_OPERATION_TYPE_TOP_UP, WALLET_OPERATION_STATUS_SUCCEEDED",
+            "WALLET_OPERATION_TYPE_TOP_UP, WALLET_OPERATION_STATUS_PAYMENT_REJECTED",
+            "WALLET_OPERATION_TYPE_TOP_UP, WALLET_OPERATION_STATUS_PROVIDER_UNAVAILABLE",
+            "WALLET_OPERATION_TYPE_TOP_UP, WALLET_OPERATION_STATUS_REVIEW_REQUIRED",
+            "WALLET_OPERATION_TYPE_SPEND, WALLET_OPERATION_STATUS_SUCCEEDED",
+            "WALLET_OPERATION_TYPE_SPEND, WALLET_OPERATION_STATUS_INSUFFICIENT_FUNDS"
+    })
+    void returnsTheOperationAsOutcomeData(WalletOperationType type, WalletOperationStatus status) {
+        var result = operation(type, status, status == WalletOperationStatus.WALLET_OPERATION_STATUS_SUCCEEDED ? AMOUNT : null);
 
         StepVerifier.create(replay(type, WalletOutcome.optional(Mono.just(result))))
                 .assertNext(outcome -> {
@@ -109,8 +117,8 @@ class WalletMutationServiceTest {
     @Test
     void freshTopUpRedactsWalletLookupFailureBeforeReservationOrCharge() {
         var walletEntities = mock(WalletEntityService.class);
-        var mutation = new WalletMutationService(new WalletLookupService(walletEntities), operations,
-                stripe, mock(ReactiveCircuitBreaker.class), metrics);
+        var mutation = new WalletMutationService(new WalletLookupService(walletEntities, outcomeHandler), operations,
+                stripe, mock(ReactiveCircuitBreaker.class), metrics, outcomeHandler);
         var failure = new DataAccessResourceFailureException("internal wallet lookup diagnostics");
         var code = CommonErrorCode.DATA_RETRIEVE_EXCEPTION;
         when(metrics.mutation(any(), any())).thenAnswer(invocation -> invocation.getArgument(1));
