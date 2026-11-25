@@ -6,10 +6,11 @@ import reactor.core.publisher.Mono;
 import java.io.Serializable;
 import java.util.Collection;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 public interface IEntityService<
-        M extends IModel,
         T extends IEntity<I>,
+        M extends IModel,
         I extends Serializable> {
 
     IRepository<T, I> getRepository();
@@ -18,35 +19,110 @@ public interface IEntityService<
 
     Function<M, Mono<T>> getMonoEntityConverter();
 
-    Mono<M> findById(I id);
+    default Mono<M> findById(I id) {
+        return getRepository().findById(id)
+                .flatMap(getMonoModelConverter());
+    }
+    
+    default Flux<M> findAllById(Collection<I> ids) {
+        return getRepository().findAllById(ids)
+                .flatMap(getMonoModelConverter());
+    }
+    
+    default Flux<M> findAllById(Flux<I> ids) {
+        return getRepository().findAllById(ids)
+                .flatMap(getMonoModelConverter());
+    }
 
-    Flux<M> findAllById(Collection<I> ids);
+    default Mono<Collection<M>> findAllByIdAsCollection(Collection<I> ids) {
+        return getRepository().findAllById(ids)
+                .flatMap(getMonoModelConverter())
+                .collect(Collectors.toList());
+    }
 
-    Flux<M> findAllById(Flux<I> ids);
+    default Flux<M> findAll() {
+        return getRepository().findAll()
+                .flatMap(getMonoModelConverter());
+    }
 
-    Flux<M> findAll();
+    default Mono<Collection<M>> findAllAsCollection() {
+        return getRepository().findAll()
+                .flatMap(getMonoModelConverter())
+                .collect(Collectors.toList());
+    }
 
-    Mono<M> save(M model);
+    default Mono<M> save(M model) {
+        return Mono.just(model)
+                .flatMap(getMonoEntityConverter())
+                .flatMap(t -> getRepository().save(t))
+                .flatMap(getMonoModelConverter());
+    }
 
-    Mono<M> save(Mono<M> mMono);
+    default Mono<M> save(Mono<M> eMono) {
+        return eMono.flatMap(this::save);
+    }
 
-    Mono<M> update(M model);
+    default Mono<M> update(M model) {
+        return Mono.just(model)
+                .flatMap(getMonoEntityConverter())
+                .flatMap(t -> getRepository().save(t))
+                .flatMap(getMonoModelConverter());
+    }
 
-    Flux<M> saveAll(Collection<M> models);
+    default Flux<M> saveAll(Collection<M> models) {
+        return Flux.fromStream(models.stream())
+                .flatMap(getMonoEntityConverter())
+                .flatMap(t -> getRepository().save(t))
+                .flatMap(getMonoModelConverter());
+    }
 
-    Flux<M> saveAll(Flux<M> mFlux);
+    default Mono<Collection<M>> saveAllAsCollection(Collection<M> models) {
+        return saveAll(models).collect(Collectors.toList());
+    }
 
-    Mono<Void> delete(M model);
+    default Flux<M> saveAll(Flux<M> mFlux) {
+        return mFlux
+                .flatMap(getMonoEntityConverter())
+                .flatMap(t -> getRepository().save(t))
+                .flatMap(getMonoModelConverter());
+    }
 
-    Mono<Void> deleteAll(Collection<M> models);
+    default Mono<Collection<M>> saveAllAsCollection(Flux<M> mFlux) {
+        return saveAll(mFlux).collect(Collectors.toList());
+    }
 
-    Mono<Void> deleteAll(Flux<M> mFlux);
+    default Mono<Void> delete(M model) {
+        return Mono.just(model)
+                .flatMap(getMonoEntityConverter())
+                .flatMap(t -> getRepository().delete(t));
+    }
 
-    Mono<Void> deleteAll();
+    default Mono<Void> deleteAll(Collection<M> models) {
+        return Flux.fromStream(models.stream())
+                .flatMap(getMonoEntityConverter())
+                .collectList()
+                .flatMap(ts -> getRepository().deleteAll(ts));
+    }
 
-    Mono<Void> deleteById(I id);
+    default Mono<Void> deleteAll(Flux<M> mFlux) {
+        return mFlux
+                .collectList()
+                .flatMap(this::deleteAll);
+    }
 
-    Mono<Void> deleteAllById(Collection<I> ids);
+    default Mono<Void> deleteAll() {
+        return getRepository().deleteAll();
+    }
 
-    Mono<Long> count();
+    default Mono<Void> deleteById(I id) {
+        return getRepository().deleteById(id);
+    }
+
+    default Mono<Void> deleteAllById(Collection<I> ids) {
+        return getRepository().deleteAllById(ids);
+    }
+
+    default Mono<Long> count() {
+        return getRepository().count();
+    }
 }

@@ -37,10 +37,6 @@ public class Outcome<S, E extends Error>
         return this.response;
     }
 
-    // =========================================================================
-    // 🏭 STATIC FACTORY METHODS (Fixed Type Inference & Dynamic Class Binding)
-    // =========================================================================
-
     @SuppressWarnings("unchecked")
     public static <S, E extends Error> Outcome<S, E> success(S response) {
         assert response != null;
