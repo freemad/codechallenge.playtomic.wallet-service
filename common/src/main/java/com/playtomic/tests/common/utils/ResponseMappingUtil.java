@@ -38,21 +38,26 @@ public final class ResponseMappingUtil {
         });
     }
 
+    public static ResponseDtoV1 toErrorResponseDtoV1(Error error, String correlationId) {
+        return newResponse(correlationId).setError(mapError(error));
+    }
+
     private static <S> ResponseDtoV1 toResponse(
             Outcome<S, Error> outcome, String correlationId, Function<S, ? extends IDto> mapper) {
-        ResponseDtoV1 responseDto = new ResponseDtoV1()
-                .setCid(correlationId)
-                .setMetadata(new HashMap<>());
-
         if (outcome.getError() != null) {
-            return responseDto.setError(mapError(outcome.getError()));
+            return toErrorResponseDtoV1(outcome.getError(), correlationId);
         }
 
+        ResponseDtoV1 responseDto = newResponse(correlationId);
         if (outcome.getResponse() != null) {
-            responseDto.setResult(mapper.apply(outcome.getResponse()));
+            return responseDto.setResult(mapper.apply(outcome.getResponse()));
         }
 
         return responseDto;
+    }
+
+    private static ResponseDtoV1 newResponse(String correlationId) {
+        return new ResponseDtoV1().setCid(correlationId).setMetadata(new HashMap<>());
     }
 
     private static ErrorDtoV1 mapError(Error sourceError) {
