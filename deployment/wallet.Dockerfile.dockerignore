@@ -1,0 +1,12 @@
+**
+!pom.xml
+!common/
+!common/pom.xml
+!common/src/
+!common/src/main/
+!common/src/main/**
+!wallet/
+!wallet/pom.xml
+!wallet/src/
+!wallet/src/main/
+!wallet/src/main/**

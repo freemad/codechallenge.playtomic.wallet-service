@@ -9,7 +9,6 @@ public interface IErrorModelMapperV1
         extends IModelToDtoMapper<Error, ErrorDtoV1> {
     IErrorCode getErrorCode(Integer code);
 
-    @Override
     default Error toModel(ErrorDtoV1 dto) {
         return new Error()
                 .setCode(getErrorCode(dto.getCode()))
@@ -17,7 +16,6 @@ public interface IErrorModelMapperV1
                 .setParams(dto.getParams());
     }
 
-    @Override
     default ErrorDtoV1 toDto(Error model) {
         return new ErrorDtoV1()
                 .setCode(model.getCode().getCode())

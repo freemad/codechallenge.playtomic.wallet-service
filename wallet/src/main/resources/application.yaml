@@ -1,0 +1,27 @@
+spring.config.import: "${WALLET_COMMON_CONFIG:classpath:common.yaml}"
+spring.profiles.default: "${SPRING_PROFILES_DEFAULT:develop}"
+server:
+  port: "${SERVER_PORT:8090}"
+spring.kafka.producer:
+  acks: all
+  key-serializer: org.apache.kafka.common.serialization.StringSerializer
+  value-serializer: org.apache.kafka.common.serialization.StringSerializer
+  properties:
+    enable.idempotence: true
+    max.block.ms: 5000
+    delivery.timeout.ms: 15000
+    request.timeout.ms: 10000
+wallet:
+  outbox:
+    enabled: ${WALLET_OUTBOX_ENABLED:false}
+  reconciliation:
+    enabled: ${WALLET_RECONCILIATION_ENABLED:false}
+---
+spring.config.activate.on-profile: "${WALLET_DEVELOP_PROFILE:develop}"
+spring.mongodb.uri: "${SPRING_MONGODB_URI:mongodb://localhost:27017/playtomic?directConnection=true&replicaSet=wallet-rs&w=majority}"
+stripe.simulator.charges-uri: "${STRIPE_SIMULATOR_CHARGESURI:https://sandbox.playtomic.io/v1/stripe-simulator/charges}"
+stripe.simulator.refunds-uri: "${STRIPE_SIMULATOR_REFUNDSURI:https://sandbox.playtomic.io/v1/stripe-simulator/payments/{payment_id}/refunds}"
+---
+spring.config.activate.on-profile: "${WALLET_TEST_PROFILE:test}"
+stripe.simulator.charges-uri: "${STRIPE_SIMULATOR_CHARGESURI:http://localhost:9999}"
+stripe.simulator.refunds-uri: "${STRIPE_SIMULATOR_REFUNDSURI:http://localhost:9999/payments/{payment_id}/refunds}"

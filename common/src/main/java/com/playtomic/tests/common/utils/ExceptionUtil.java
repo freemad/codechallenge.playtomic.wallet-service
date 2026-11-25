@@ -1,6 +1,7 @@
 package com.playtomic.tests.common.utils;
 
 import com.playtomic.tests.common.constants.ResponseParam;
+import com.playtomic.tests.common.contracts.mappers.IErrorModelMapperV1;
 import com.playtomic.tests.common.contracts.mappers.IModelToDtoMapper;
 import com.playtomic.tests.common.dtos.ErrorDtoV1;
 import com.playtomic.tests.common.dtos.ResponseDtoV1;
@@ -14,7 +15,7 @@ import java.util.Map;
 
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class ExceptionUtil {
-    public static ResponseDtoV1 getBizExceptionResponseDto(BusinessException businessException, IModelToDtoMapper<Error, ErrorDtoV1> errorMapper, boolean debugMode) {
+    public static ResponseDtoV1 getBizExceptionResponseDtoV1(BusinessException businessException, IErrorModelMapperV1 errorMapper, boolean debugMode) {
         var errorParams = renderErrorParams(businessException, debugMode);
         return new ResponseDtoV1()
                 .setResult(null)
