@@ -20,6 +20,7 @@
 	<modules>
 		<module>common</module>
 		<module>wallet</module>
+		<module>simulator</module>
 	</modules>
 
 	<properties>
@@ -33,6 +34,11 @@
 
 	<dependencyManagement>
 		<dependencies>
+			<dependency>
+				<groupId>com.playtomic.tests</groupId>
+				<artifactId>common</artifactId>
+				<version>${project.version}</version>
+			</dependency>
 			<dependency>
 				<groupId>com.fasterxml.jackson</groupId>
 				<artifactId>jackson-bom</artifactId>

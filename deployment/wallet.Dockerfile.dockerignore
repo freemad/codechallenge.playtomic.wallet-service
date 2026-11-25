@@ -10,3 +10,5 @@
 !wallet/src/
 !wallet/src/main/
 !wallet/src/main/**
+!simulator/
+!simulator/pom.xml

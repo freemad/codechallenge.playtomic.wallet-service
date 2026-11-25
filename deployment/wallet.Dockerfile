@@ -4,7 +4,8 @@ COPY pom.xml .
 COPY common/ common/
 COPY wallet/pom.xml wallet/pom.xml
 COPY wallet/src/main/ wallet/src/main/
-RUN mvn -B -q -Dmaven.test.skip=true package
+COPY simulator/pom.xml simulator/pom.xml
+RUN mvn -B -q -pl wallet -am -Dmaven.test.skip=true package
 
 FROM eclipse-temurin:25-jre-noble
 WORKDIR /app

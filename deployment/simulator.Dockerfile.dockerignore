@@ -1,0 +1,15 @@
+**
+!pom.xml
+!common/
+!common/pom.xml
+!common/src/
+!common/src/main/
+!common/src/main/**
+!wallet/
+!wallet/pom.xml
+!simulator/
+!simulator/pom.xml
+!simulator/src/
+!simulator/src/main/
+!simulator/src/main/**
+

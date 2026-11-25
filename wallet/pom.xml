@@ -15,9 +15,8 @@
 
 	<dependencies>
 		<dependency>
-			<groupId>${project.groupId}</groupId>
+			<groupId>com.playtomic.tests</groupId>
 			<artifactId>common</artifactId>
-			<version>${project.version}</version>
 		</dependency>
 
 		<dependency>
