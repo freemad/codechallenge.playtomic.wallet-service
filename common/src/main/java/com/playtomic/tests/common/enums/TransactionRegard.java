@@ -1,6 +1,8 @@
 package com.playtomic.tests.common.enums;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.playtomic.tests.common.constants.CommonParam;
 import com.playtomic.tests.common.exceptions.BusinessException;
 import lombok.Getter;
@@ -32,7 +34,8 @@ public enum TransactionRegard {
                 TRANSACTION_REGARD_ERROR, "TransactionRegard requires a non-null operational value");
     }
 
-    public static TransactionRegard ofValue(short value) {
+    @JsonCreator(mode = JsonCreator.Mode.PROPERTIES)
+    public static TransactionRegard ofValue(@JsonProperty(value = "value", required = true) short value) {
         return EnumLookup.find(values(), regard -> regard.value == value, "unknown TransactionRegard! value: " + value);
     }
 

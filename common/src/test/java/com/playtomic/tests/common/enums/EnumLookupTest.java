@@ -1,5 +1,6 @@
 package com.playtomic.tests.common.enums;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.playtomic.tests.common.exceptions.BusinessException;
 import org.junit.jupiter.api.Test;
@@ -95,6 +96,40 @@ class EnumLookupTest {
                 () -> TransactionRegard.ofName("not-a-regard"));
         assertIllegalArgument("unknown TransactionRegard! value: 42",
                 () -> TransactionRegard.ofValue((short) 42));
+    }
+
+    @Test
+    void jacksonRoundTripsReviewEnumsAndTransactionRegard() throws Exception {
+        assertObjectEncoding(PaymentReviewOperation.PAYMENT_REVIEW_OPERATION_PROCEED,
+                "{\"value\":3,\"name\":\"proceed\"}");
+        assertObjectEncoding(PaymentReviewStatus.PAYMENT_REVIEW_STATUS_RESOLUTION_REQUESTED,
+                "{\"value\":3,\"name\":\"resolution_requested\"}");
+        assertObjectEncoding(TransactionRegard.TRANSACTION_REGARD_PURCHASE,
+                "{\"value\":2,\"name\":\"purchase\"}");
+    }
+
+    @Test
+    void reviewEnumsSeparateParsingFromOperationalValidation() {
+        for (var operation : PaymentReviewOperation.values()) {
+            assertSame(operation, PaymentReviewOperation.ofValue(operation.getValue()));
+            assertSame(operation, PaymentReviewOperation.ofName(operation.getName()));
+        }
+        for (var status : PaymentReviewStatus.values()) {
+            assertSame(status, PaymentReviewStatus.ofValue(status.getValue()));
+            assertSame(status, PaymentReviewStatus.ofName(status.getName()));
+        }
+        assertIllegalArgument("Payment review operation requires an operational value",
+                () -> PaymentReviewOperation.validate(PaymentReviewOperation.PAYMENT_REVIEW_OPERATION_ERROR));
+        assertIllegalArgument("Payment review status requires an operational value",
+                () -> PaymentReviewStatus.validate(PaymentReviewStatus.PAYMENT_REVIEW_STATUS_UNSPECIFIED));
+    }
+
+    private static void assertObjectEncoding(Enum<?> constant, String json) throws JsonProcessingException {
+        var mapper = new ObjectMapper();
+        assertEquals(mapper.readTree(json), mapper.valueToTree(constant));
+        assertSame(constant, mapper.readValue(json, constant.getDeclaringClass()));
+        assertThrows(JsonProcessingException.class,
+                () -> mapper.readValue("{\"name\":\"unspecified\"}", constant.getDeclaringClass()));
     }
 
     private static void assertIllegalArgument(String message, Executable operation) {
