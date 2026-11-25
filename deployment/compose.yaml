@@ -1,5 +1,5 @@
 x-mongo: &mongo
-  image: &mongo-image mongo:8.3.2-noble
+  image: &mongo-image mongo:8.3.17-noble
   command: ["--replSet", "wallet-rs", "--bind_ip_all"]
   healthcheck:
     test: ["CMD", "mongosh", "--quiet", "--eval", "quit(db.adminCommand({ping: 1}).ok ? 0 : 1)"]
@@ -36,6 +36,14 @@ services:
       - ./init-replica-set.js:/init-replica-set.js:ro
     command: ["mongosh", "--quiet", "mongodb://mongo-1:27017/admin?directConnection=true", "--file", "/init-replica-set.js"]
 
+  simulator:
+    build:
+      context: ..
+      dockerfile: deployment/simulator.Dockerfile
+    environment:
+      - SERVER_ADDRESS=0.0.0.0
+      - PAYMENT_SIMULATOR_SCENARIO=${PAYMENT_SIMULATOR_SCENARIO:-SUCCESS}
+
   wallet:
     build:
       context: ..
@@ -43,10 +51,20 @@ services:
     depends_on:
       mongo-init:
         condition: service_completed_successfully
+      simulator:
+        condition: service_started
     environment:
       - SPRING_MONGODB_URI=mongodb://mongo-1:27017,mongo-2:27017,mongo-3:27017/playtomic?replicaSet=wallet-rs&w=majority
-      - STRIPE_SIMULATOR_CHARGESURI
-      - STRIPE_SIMULATOR_REFUNDSURI
+      - WALLET_PAYMENT_PROVIDERS_STRIPE_CHARGES_URI=${WALLET_PAYMENT_PROVIDERS_STRIPE_CHARGES_URI:-${STRIPE_SIMULATOR_CHARGESURI:-http://simulator:9999/v1/stripe-simulator/charges}}
+      - WALLET_PAYMENT_PROVIDERS_STRIPE_REFUNDS_URI=${WALLET_PAYMENT_PROVIDERS_STRIPE_REFUNDS_URI:-${STRIPE_SIMULATOR_REFUNDSURI:-http://simulator:9999/v1/stripe-simulator/payments/{payment_id}/refunds}}
+      - WALLET_PAYMENT_PROVIDERS_STRIPE_CONNECT_TIMEOUT
+      - WALLET_PAYMENT_PROVIDERS_STRIPE_REQUEST_TIMEOUT
+      - WALLET_PAYMENT_PROVIDERS_PAYPAL_ORDERS_URI=${WALLET_PAYMENT_PROVIDERS_PAYPAL_ORDERS_URI:-${WALLET_SIMULATOR_PAYPAL_ORDERS_URI:-http://simulator:9999/v1/paypal-simulator/v2/checkout/orders}}
+      - WALLET_PAYMENT_PROVIDERS_PAYPAL_CONNECT_TIMEOUT
+      - WALLET_PAYMENT_PROVIDERS_PAYPAL_REQUEST_TIMEOUT
+      - WALLET_PAYMENT_PROVIDERS_REDSYS_AUTHORIZATION_URI=${WALLET_PAYMENT_PROVIDERS_REDSYS_AUTHORIZATION_URI:-${WALLET_SIMULATOR_REDSYS_AUTHORIZATION_URI:-http://simulator:9999/v1/redsys-simulator/sis/rest/trataPeticion}}
+      - WALLET_PAYMENT_PROVIDERS_REDSYS_CONNECT_TIMEOUT
+      - WALLET_PAYMENT_PROVIDERS_REDSYS_REQUEST_TIMEOUT
     ports:
       - "127.0.0.1:${WALLET_HTTP_PORT:-8090}:8090"
 

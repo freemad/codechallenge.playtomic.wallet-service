@@ -4,14 +4,14 @@ try {
     if (error.codeName !== "NotYetInitialized") {
         throw error;
     }
-    assert.commandWorked(rs.initiate({
+    db.adminCommand({replSetInitiate: {
         _id: "wallet-rs",
         members: [
             {_id: 0, host: "mongo-1:27017"},
             {_id: 1, host: "mongo-2:27017"},
             {_id: 2, host: "mongo-3:27017"}
         ]
-    }));
+    }});
 }
 
 const deadline = Date.now() + 60000;
