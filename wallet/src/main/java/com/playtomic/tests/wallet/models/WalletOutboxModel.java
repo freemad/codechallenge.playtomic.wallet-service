@@ -1,6 +1,7 @@
 package com.playtomic.tests.wallet.models;
 
 import com.playtomic.tests.common.contracts.models.IModel;
+import com.playtomic.tests.wallet.enums.WalletEventType;
 import lombok.ToString;
 import lombok.Value;
 import lombok.experimental.Accessors;
@@ -17,7 +18,7 @@ public class WalletOutboxModel implements IModel {
 
     String id;
     String walletId;
-    String eventType;
+    WalletEventType eventType;
     int schemaVersion;
     BigDecimal amount;
     String currency;

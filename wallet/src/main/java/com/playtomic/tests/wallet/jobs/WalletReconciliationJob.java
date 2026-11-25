@@ -1,72 +1,77 @@
 package com.playtomic.tests.wallet.jobs;
 
+import com.playtomic.tests.common.exceptions.BusinessException;
+import com.playtomic.tests.common.utils.ExceptionNormalizer;
+import com.playtomic.tests.wallet.configs.WalletReconciliationProps;
+import com.playtomic.tests.wallet.constants.WalletWorkerParam;
 import com.playtomic.tests.wallet.models.WalletOutcome;
-import com.playtomic.tests.wallet.services.WalletJobLeaseService;
 import com.playtomic.tests.wallet.services.WalletOperationService;
+import com.playtomic.tests.wallet.services.entity.WalletJobLeaseEntityService;
+import com.playtomic.tests.wallet.services.entity.WalletOperationEntityService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-import java.time.Duration;
 import java.time.Instant;
 
-import static com.playtomic.tests.wallet.models.WalletOperationModel.Status.PENDING;
-import static com.playtomic.tests.wallet.models.WalletOperationModel.Status.RECEIPT_RECORDED;
-import static com.playtomic.tests.wallet.models.WalletOperationModel.Status.REVIEW_REQUIRED;
+import static com.playtomic.tests.wallet.enums.WalletOperationStatus.WALLET_OPERATION_STATUS_PENDING;
+import static com.playtomic.tests.wallet.enums.WalletOperationStatus.WALLET_OPERATION_STATUS_RECEIPT_RECORDED;
+import static com.playtomic.tests.wallet.enums.WalletOperationStatus.WALLET_OPERATION_STATUS_REVIEW_REQUIRED;
 
 @Component
 @EnableScheduling
-@ConditionalOnProperty(name = "wallet.reconciliation.enabled", havingValue = "true")
+@ConditionalOnProperty(prefix = WalletReconciliationProps.PREFIX, name = "enabled", havingValue = "true")
 public class WalletReconciliationJob {
     private static final Logger log = LoggerFactory.getLogger(WalletReconciliationJob.class);
     private static final String JOB = "payment-reconciliation";
-    private static final Duration LEASE = Duration.ofMinutes(1);
-    private static final Duration RUN_TIMEOUT = Duration.ofSeconds(25);
-    private static final Duration STALE_PENDING = Duration.ofMinutes(2);
-    private static final Duration RECEIPT_DELAY = Duration.ofSeconds(15);
-    private static final int BATCH_SIZE = 25;
 
     private final WalletOperationService operations;
-    private final WalletJobLeaseService leases;
+    private final WalletOperationEntityService operationEntities;
+    private final WalletJobLeaseEntityService leases;
+    private final WalletReconciliationProps properties;
     private final Mono<String> indexReady;
 
-    public WalletReconciliationJob(WalletOperationService operations, WalletJobLeaseService leases) {
+    public WalletReconciliationJob(WalletOperationService operations, WalletOperationEntityService operationEntities,
+                                   WalletJobLeaseEntityService leases, WalletReconciliationProps properties) {
         this.operations = operations;
+        this.operationEntities = operationEntities;
         this.leases = leases;
-        this.indexReady = Mono.defer(operations::ensureReconciliationIndex)
-                .flatMap(WalletOutcome::value)
-                .cache(value -> Duration.ofMillis(Long.MAX_VALUE), error -> Duration.ZERO, () -> Duration.ZERO);
+        this.properties = properties;
+        this.indexReady = WalletWorkerParam.cacheSuccessfulIndex(Mono.defer(operationEntities::ensureReconciliationIndex));
     }
 
-    @Scheduled(fixedDelayString = "${wallet.reconciliation.interval:15s}")
+    @Scheduled(fixedDelayString = "${" + WalletReconciliationProps.PREFIX + ".interval}")
     public Mono<Void> reconcile() {
-        return Mono.usingWhen(leases.acquire(JOB, LEASE).flatMap(WalletOutcome::optionalValue),
-                token -> indexReady.then(Mono.defer(this::reconcileBatch)).timeout(RUN_TIMEOUT),
-                token -> leases.release(JOB, token).flatMap(WalletOutcome::value));
+        return Mono.usingWhen(Mono.defer(() -> leases.acquire(JOB, properties.lease())),
+                token -> indexReady.then(Mono.defer(this::reconcileBatch)).timeout(properties.runTimeout()),
+                token -> leases.release(JOB, token))
+                .onErrorMap(ExceptionNormalizer::normalize);
     }
 
     private Mono<Void> reconcileBatch() {
         Instant now = Instant.now();
-        return operations.reconciliationBatch(PENDING, now.minus(STALE_PENDING), BATCH_SIZE)
-                .concatMap(WalletOutcome::value)
-                .concatMap(operation -> operations.markPaymentOutcome(operation.getId(), REVIEW_REQUIRED)
+        return operationEntities.reconciliationBatch(WALLET_OPERATION_STATUS_PENDING, now.minus(properties.stalePendingAge()), properties.batchSize())
+                .concatMap(operation -> operations.markPaymentOutcome(operation.getId(), WALLET_OPERATION_STATUS_REVIEW_REQUIRED)
                         .flatMap(WalletOutcome::optionalValue)
                         .doOnNext(result -> {
-                            if (result.getStatus() == REVIEW_REQUIRED) {
+                            if (result.getStatus() == WALLET_OPERATION_STATUS_REVIEW_REQUIRED) {
                                 log.warn("Stale payment requires review: operationId={}", result.getId());
                             }
                         }))
-                .thenMany(operations.reconciliationBatch(RECEIPT_RECORDED, now.minus(RECEIPT_DELAY), BATCH_SIZE))
-                .concatMap(WalletOutcome::value)
-                .concatMap(operation -> operations.apply(operation.getId())
-                        .flatMap(WalletOutcome::optionalValue).then().onErrorResume(error -> {
-                            log.warn("Recorded payment could not be applied: operationId={} errorType={}",
-                                    operation.getId(), error.getClass().getSimpleName());
-                            return operations.deferReceiptRecovery(operation).flatMap(WalletOutcome::value).then();
+                .thenMany(Flux.defer(() -> operationEntities.reconciliationBatch(
+                        WALLET_OPERATION_STATUS_RECEIPT_RECORDED, now.minus(properties.receiptDelay()), properties.batchSize())))
+                .concatMap(operation -> Mono.defer(() -> operations.apply(operation.getId()))
+                        .flatMap(WalletOutcome::optionalValue).then()
+                        .onErrorMap(ExceptionNormalizer::normalize)
+                        .onErrorResume(BusinessException.class, error -> {
+                            log.warn("Recorded payment could not be applied: operationId={} errorCode={}",
+                                    operation.getId(), error.getErrorCode().getCode());
+                            return operationEntities.deferReceiptRecovery(operation);
                         }))
                 .then();
     }

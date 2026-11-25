@@ -5,12 +5,14 @@ import com.playtomic.tests.common.models.Error;
 import com.playtomic.tests.common.models.Outcome;
 import com.playtomic.tests.common.resilience.ReactiveCircuitBreaker;
 import com.playtomic.tests.wallet.enums.WalletErrorCode;
+import com.playtomic.tests.wallet.enums.WalletOperationStatus;
+import com.playtomic.tests.wallet.enums.WalletOperationType;
 import com.playtomic.tests.wallet.http.stripe.StripeService;
 import com.playtomic.tests.wallet.models.WalletOperationModel;
-import com.playtomic.tests.wallet.models.WalletOperationModel.Status;
-import com.playtomic.tests.wallet.models.WalletOperationModel.Type;
 import com.playtomic.tests.wallet.models.WalletOutcome;
 import com.playtomic.tests.wallet.observability.WalletMutationMetrics;
+import com.playtomic.tests.wallet.services.entity.WalletEntityService;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.dao.DataAccessResourceFailureException;
@@ -23,10 +25,16 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.concurrent.CancellationException;
 
+import static com.playtomic.tests.wallet.enums.WalletOperationStatus.WALLET_OPERATION_STATUS_PENDING;
+import static com.playtomic.tests.wallet.enums.WalletOperationStatus.WALLET_OPERATION_STATUS_RECEIPT_RECORDED;
+import static com.playtomic.tests.wallet.enums.WalletOperationStatus.WALLET_OPERATION_STATUS_SUCCEEDED;
+import static com.playtomic.tests.wallet.enums.WalletOperationType.WALLET_OPERATION_TYPE_TOP_UP;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -44,9 +52,9 @@ class WalletMutationServiceTest {
             stripe, mock(ReactiveCircuitBreaker.class), metrics);
 
     @ParameterizedTest
-    @EnumSource(Type.class)
-    void returnsTheOperationAsOutcomeData(Type type) {
-        var result = operation(type, Status.SUCCEEDED, AMOUNT);
+    @EnumSource(value = WalletOperationType.class, names = {"WALLET_OPERATION_TYPE_TOP_UP", "WALLET_OPERATION_TYPE_SPEND"})
+    void returnsTheOperationAsOutcomeData(WalletOperationType type) {
+        var result = operation(type, WALLET_OPERATION_STATUS_SUCCEEDED, AMOUNT);
 
         StepVerifier.create(replay(type, WalletOutcome.optional(Mono.just(result))))
                 .assertNext(outcome -> {
@@ -58,8 +66,8 @@ class WalletMutationServiceTest {
     }
 
     @ParameterizedTest
-    @EnumSource(Type.class)
-    void propagatesATypedOperationFailure(Type type) {
+    @EnumSource(value = WalletOperationType.class, names = {"WALLET_OPERATION_TYPE_TOP_UP", "WALLET_OPERATION_TYPE_SPEND"})
+    void propagatesATypedOperationFailure(WalletOperationType type) {
         var code = WalletErrorCode.IDEMPOTENCY_CONFLICT;
         var failure = new Error().setCode(code).setMessage(code.getMessage());
 
@@ -73,8 +81,8 @@ class WalletMutationServiceTest {
     }
 
     @ParameterizedTest
-    @EnumSource(Type.class)
-    void translatesStorageFailureWithoutExposingDiagnostics(Type type) {
+    @EnumSource(value = WalletOperationType.class, names = {"WALLET_OPERATION_TYPE_TOP_UP", "WALLET_OPERATION_TYPE_SPEND"})
+    void translatesStorageFailureWithoutExposingDiagnostics(WalletOperationType type) {
         var failure = new DataAccessResourceFailureException("internal storage diagnostics");
 
         StepVerifier.create(replay(type, Mono.error(failure)))
@@ -89,8 +97,8 @@ class WalletMutationServiceTest {
     }
 
     @ParameterizedTest
-    @EnumSource(Type.class)
-    void leavesCancellationOnTheReactiveErrorChannel(Type type) {
+    @EnumSource(value = WalletOperationType.class, names = {"WALLET_OPERATION_TYPE_TOP_UP", "WALLET_OPERATION_TYPE_SPEND"})
+    void leavesCancellationOnTheReactiveErrorChannel(WalletOperationType type) {
         var cancellation = new CancellationException();
 
         StepVerifier.create(replay(type, Mono.error(cancellation)))
@@ -98,17 +106,40 @@ class WalletMutationServiceTest {
         verifyNoInteractions(stripe);
     }
 
-    private Mono<Outcome<WalletOperationModel, Error>> replay(Type type,
+    @Test
+    void freshTopUpRedactsWalletLookupFailureBeforeReservationOrCharge() {
+        var walletEntities = mock(WalletEntityService.class);
+        var mutation = new WalletMutationService(new WalletLookupService(walletEntities), operations,
+                stripe, mock(ReactiveCircuitBreaker.class), metrics);
+        var failure = new DataAccessResourceFailureException("internal wallet lookup diagnostics");
+        var code = CommonErrorCode.DATA_RETRIEVE_EXCEPTION;
+        when(metrics.mutation(any(), any())).thenAnswer(invocation -> invocation.getArgument(1));
+        when(operations.find(anyString())).thenReturn(WalletOutcome.optional(Mono.empty()));
+        when(walletEntities.findById(WALLET_ID)).thenReturn(Mono.error(failure));
+
+        StepVerifier.create(mutation.topUp(WALLET_ID, "key", AMOUNT, CURRENCY, "unused"))
+                .assertNext(outcome -> {
+                    assertThat(outcome.isFailure()).isTrue();
+                    assertThat(outcome.getError().getCode()).isEqualTo(code);
+                    assertThat(outcome.getError().getMessage()).isEqualTo(code.getMessage());
+                    assertThat(outcome.getError().getException()).isNull();
+                })
+                .expectComplete().verify(DEADLINE);
+        verify(operations, never()).reserve(any());
+        verifyNoInteractions(stripe);
+    }
+
+    private Mono<Outcome<WalletOperationModel, Error>> replay(WalletOperationType type,
             Mono<Outcome<Optional<WalletOperationModel>, Error>> applied) {
-        var status = type == Type.TOP_UP ? Status.RECEIPT_RECORDED : Status.PENDING;
+        var status = type == WALLET_OPERATION_TYPE_TOP_UP ? WALLET_OPERATION_STATUS_RECEIPT_RECORDED : WALLET_OPERATION_STATUS_PENDING;
         when(metrics.mutation(any(), any())).thenAnswer(invocation -> invocation.getArgument(1));
         when(operations.find(anyString())).thenReturn(WalletOutcome.optional(Mono.just(operation(type, status, null))));
         when(operations.apply(OPERATION_ID)).thenReturn(applied);
-        return type == Type.TOP_UP ? service.topUp(WALLET_ID, "key", AMOUNT, CURRENCY, "unused")
+        return type == WALLET_OPERATION_TYPE_TOP_UP ? service.topUp(WALLET_ID, "key", AMOUNT, CURRENCY, "unused")
                 : service.spend(WALLET_ID, "key", AMOUNT, CURRENCY);
     }
 
-    private static WalletOperationModel operation(Type type, Status status, BigDecimal balance) {
+    private static WalletOperationModel operation(WalletOperationType type, WalletOperationStatus status, BigDecimal balance) {
         return new WalletOperationModel(OPERATION_ID, WALLET_ID, type, AMOUNT, CURRENCY, status, balance, Instant.EPOCH);
     }
 }

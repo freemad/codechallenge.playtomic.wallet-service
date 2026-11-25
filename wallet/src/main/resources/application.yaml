@@ -14,8 +14,19 @@ spring.kafka.producer:
 wallet:
   outbox:
     enabled: ${WALLET_OUTBOX_ENABLED:false}
+    interval: ${WALLET_OUTBOX_INTERVAL:2s}
+    topic: ${WALLET_OUTBOX_TOPIC:wallet.events.v1}
+    claim-lease: ${WALLET_OUTBOX_CLAIM_LEASE:45s}
+    send-timeout: ${WALLET_OUTBOX_SEND_TIMEOUT:20s}
+    batch-size: ${WALLET_OUTBOX_BATCH_SIZE:25}
   reconciliation:
     enabled: ${WALLET_RECONCILIATION_ENABLED:false}
+    interval: ${WALLET_RECONCILIATION_INTERVAL:15s}
+    lease: ${WALLET_RECONCILIATION_LEASE:1m}
+    run-timeout: ${WALLET_RECONCILIATION_RUN_TIMEOUT:25s}
+    stale-pending-age: ${WALLET_RECONCILIATION_STALE_PENDING_AGE:2m}
+    receipt-delay: ${WALLET_RECONCILIATION_RECEIPT_DELAY:15s}
+    batch-size: ${WALLET_RECONCILIATION_BATCH_SIZE:25}
 ---
 spring.config.activate.on-profile: "${WALLET_DEVELOP_PROFILE:develop}"
 spring.mongodb.uri: "${SPRING_MONGODB_URI:mongodb://localhost:27017/playtomic?directConnection=true&replicaSet=wallet-rs&w=majority}"
