@@ -1,5 +1,7 @@
 package com.playtomic.tests.common.contracts.dtos;
 
+import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.Map;
 
 public interface IResponseDto
@@ -8,7 +10,9 @@ public interface IResponseDto
 
     boolean isSuccess();
 
-    String getTimestamp();
+    default String getTimestamp() {
+        return String.valueOf(OffsetDateTime.now());
+    }
 
     IDto getResult();
 
