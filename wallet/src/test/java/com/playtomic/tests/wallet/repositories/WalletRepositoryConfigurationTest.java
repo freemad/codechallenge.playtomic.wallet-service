@@ -8,12 +8,12 @@ import com.playtomic.tests.wallet.entities.WalletJobLeaseEntity;
 import com.playtomic.tests.wallet.entities.WalletOperationEntity;
 import com.playtomic.tests.wallet.entities.WalletOutboxEntity;
 import com.playtomic.tests.wallet.entities.WalletPaymentReceiptEntity;
-import com.playtomic.tests.wallet.models.WalletOperationModel;
 import org.bson.Document;
 import org.bson.types.Decimal128;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.ApplicationContext;
 import org.springframework.core.env.Environment;
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate;
 import org.springframework.test.context.ActiveProfiles;
@@ -55,6 +55,9 @@ class WalletRepositoryConfigurationTest {
     private Environment environment;
 
     @Autowired
+    private ApplicationContext context;
+
+    @Autowired
     private CommonProps commonProps;
 
     @Test
@@ -94,18 +97,22 @@ class WalletRepositoryConfigurationTest {
         var time = Instant.parse("2026-11-24T00:00:00Z");
         var amount = new BigDecimal("0.02");
         var balance = new BigDecimal("9007199254740993.01");
-        var operation = new WalletOperationEntity(id, "wallet", WalletOperationModel.Type.TOP_UP, amount,
-                "EUR", WalletOperationModel.Status.SUCCEEDED, balance, time);
+        var operation = new WalletOperationEntity(id, "wallet", WalletOperationEntity.Type.TOP_UP, amount,
+                "EUR", WalletOperationEntity.Status.SUCCEEDED, balance, time);
         var receipt = new WalletPaymentReceiptEntity("payment-id", id, time);
         var outbox = new WalletOutboxEntity(id, "wallet", "WalletCredited", 1, amount,
                 "EUR", balance, time, time, null, null);
 
         assertThat(roundTrip(operation, WalletOperationEntity.class))
+                .containsEntry("type", "TOP_UP")
+                .containsEntry("status", "SUCCEEDED")
                 .containsEntry("amount", new Decimal128(amount))
                 .containsEntry("resultingBalance", new Decimal128(balance));
         assertThat(roundTrip(receipt, WalletPaymentReceiptEntity.class))
                 .containsEntry("operationId", id).doesNotContainKey("providerPaymentId");
         assertThat(roundTrip(outbox, WalletOutboxEntity.class))
+                .containsEntry("eventType", "WalletCredited")
+                .containsEntry("schemaVersion", 1)
                 .containsEntry("amount", new Decimal128(amount))
                 .containsEntry("resultingBalance", new Decimal128(balance));
     }
@@ -132,6 +139,18 @@ class WalletRepositoryConfigurationTest {
         assertThat(receipts).isNotNull();
         assertThat(outbox).isNotNull();
         assertThat(leases).isNotNull();
+    }
+
+    @Test
+    void discoversCustomOperationsAsSeparateBeans() {
+        assertThat(context.getBeansOfType(IWalletBalanceMongoOperations.class)).hasSize(1);
+        assertThat(context.getBean(IWalletBalanceMongoOperations.class)).isNotSameAs(documents);
+        assertThat(context.getBeansOfType(IWalletOperationMongoOperations.class)).hasSize(1);
+        assertThat(context.getBean(IWalletOperationMongoOperations.class)).isNotSameAs(operations);
+        assertThat(context.getBeansOfType(IWalletOutboxMongoOperations.class)).hasSize(1);
+        assertThat(context.getBean(IWalletOutboxMongoOperations.class)).isNotSameAs(outbox);
+        assertThat(context.getBeansOfType(IWalletJobLeaseMongoOperations.class)).hasSize(1);
+        assertThat(context.getBean(IWalletJobLeaseMongoOperations.class)).isNotSameAs(leases);
     }
 
     @Test

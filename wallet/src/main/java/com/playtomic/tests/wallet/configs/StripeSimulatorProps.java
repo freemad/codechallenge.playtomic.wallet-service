@@ -9,23 +9,25 @@ import org.springframework.util.Assert;
 import java.net.URI;
 import java.time.Duration;
 
+import static com.playtomic.tests.wallet.constants.StripeSimulatorParam.PAYMENT_ID_PLACEHOLDER;
+
 @Getter
 @Accessors(chain = true)
 @ConfigurationProperties("stripe.simulator")
-public final class StripeSimulatorProperties {
+public final class StripeSimulatorProps {
 
     private final URI chargesUri;
     private final String refundsUri;
     private final Duration connectTimeout;
     private final Duration requestTimeout;
 
-    public StripeSimulatorProperties(URI chargesUri, String refundsUri,
-                                     @DefaultValue("2s") Duration connectTimeout,
-                                     @DefaultValue("5s") Duration requestTimeout) {
+    public StripeSimulatorProps(URI chargesUri, String refundsUri,
+                                @DefaultValue("2s") Duration connectTimeout,
+                                @DefaultValue("5s") Duration requestTimeout) {
         Assert.isTrue(isHttpUri(chargesUri), "stripe.simulator.charges-uri must be an HTTP(S) URI");
-        Assert.isTrue(refundsUri != null && refundsUri.contains("{payment_id}")
-                        && isHttpUri(URI.create(refundsUri.replace("{payment_id}", "id"))),
-                "stripe.simulator.refunds-uri must be an HTTP(S) URI template with {payment_id}");
+        Assert.isTrue(refundsUri != null && refundsUri.contains(PAYMENT_ID_PLACEHOLDER)
+                        && isHttpUri(URI.create(refundsUri.replace(PAYMENT_ID_PLACEHOLDER, "id"))),
+                "stripe.simulator.refunds-uri must be an HTTP(S) URI template with " + PAYMENT_ID_PLACEHOLDER);
         Assert.isTrue(connectTimeout.compareTo(Duration.ofMillis(1)) >= 0
                         && connectTimeout.compareTo(Duration.ofMillis(Integer.MAX_VALUE)) <= 0,
                 "stripe.simulator.connect-timeout must fit in a positive integer number of milliseconds");

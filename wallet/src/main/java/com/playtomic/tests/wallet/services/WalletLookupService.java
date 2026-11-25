@@ -7,6 +7,7 @@ import com.playtomic.tests.wallet.enums.WalletErrorCode;
 import com.playtomic.tests.wallet.exceptions.WalletNotFoundException;
 import com.playtomic.tests.wallet.models.WalletModel;
 import com.playtomic.tests.wallet.models.WalletOutcome;
+import com.playtomic.tests.wallet.services.entity.WalletEntityService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
@@ -15,18 +16,18 @@ import reactor.core.publisher.Mono;
 @RequiredArgsConstructor
 public class WalletLookupService {
 
-    private final WalletService wallets;
+    private final WalletEntityService entityService;
 
     public Mono<Outcome<WalletModel, Error>> findById(String id) {
         return WalletOutcome.from(requireWallet(id));
     }
 
-    Mono<WalletModel> requireWallet(String id) {
+    private Mono<WalletModel> requireWallet(String id) {
         return Mono.defer(() -> {
             if (id == null || id.isBlank()) {
                 return Mono.error(new BusinessException(WalletErrorCode.INVALID_WALLET_ID));
             }
-            return wallets.findById(id).switchIfEmpty(Mono.error(WalletNotFoundException::new));
+            return entityService.findById(id).switchIfEmpty(Mono.error(WalletNotFoundException::new));
         });
     }
 }

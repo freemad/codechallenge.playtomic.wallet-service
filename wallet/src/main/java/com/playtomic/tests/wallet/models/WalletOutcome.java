@@ -4,6 +4,7 @@ import com.playtomic.tests.common.exceptions.BusinessException;
 import com.playtomic.tests.common.models.Error;
 import com.playtomic.tests.common.models.Outcome;
 import com.playtomic.tests.common.utils.ExceptionNormalizer;
+import com.playtomic.tests.wallet.enums.WalletCompletion;
 import com.playtomic.tests.wallet.enums.WalletErrorCode;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
@@ -13,14 +14,12 @@ import java.util.Optional;
 
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class WalletOutcome {
-    public enum Completion { COMPLETED }
-
     public static <T> Mono<Outcome<Optional<T>, Error>> optional(Mono<T> result) {
         return result.map(Optional::of).defaultIfEmpty(Optional.empty()).map(Outcome::success);
     }
 
-    public static Mono<Outcome<Completion, Error>> completed(Mono<Void> work) {
-        return work.then(Mono.fromSupplier(() -> Outcome.success(Completion.COMPLETED)));
+    public static Mono<Outcome<WalletCompletion, Error>> completed(Mono<Void> work) {
+        return work.then(Mono.fromSupplier(() -> Outcome.success(WalletCompletion.WALLET_COMPLETION_COMPLETED)));
     }
 
     public static <T> Mono<T> value(Outcome<T, Error> outcome) {
@@ -37,7 +36,7 @@ public final class WalletOutcome {
     }
 
     public static <T> Mono<T> required(Mono<T> result, String message) {
-        return result.switchIfEmpty(Mono.error(() -> new IllegalStateException(message)));
+        return result.switchIfEmpty(Mono.error(() -> ExceptionNormalizer.normalize(new IllegalStateException(message))));
     }
 
     public static <T> Mono<Outcome<T, Error>> from(Mono<T> result) {

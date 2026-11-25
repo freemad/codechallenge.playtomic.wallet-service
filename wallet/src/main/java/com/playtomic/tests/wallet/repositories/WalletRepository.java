@@ -5,5 +5,5 @@ import com.playtomic.tests.wallet.entities.WalletEntity;
 import org.springframework.stereotype.Repository;
 
 @Repository
-public interface WalletRepository extends IRepository<WalletEntity, String>, WalletBalanceMongoOperations {
+public interface WalletRepository extends IRepository<WalletEntity, String> {
 }

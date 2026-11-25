@@ -32,7 +32,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
-import static com.playtomic.tests.wallet.models.WalletOperationModel.Status.SUCCEEDED;
+import static com.playtomic.tests.wallet.enums.WalletOperationStatus.WALLET_OPERATION_STATUS_SUCCEEDED;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verifyNoInteractions;
 
@@ -83,7 +83,7 @@ class WalletOutboxRelayIT {
         assertThat(outcome.getError()).isNull();
         var result = outcome.getData();
         assertThat(result).isNotNull();
-        assertThat(result.getStatus()).isEqualTo(SUCCEEDED);
+        assertThat(result.getStatus()).isEqualTo(WALLET_OPERATION_STATUS_SUCCEEDED);
 
         try (var consumer = new KafkaConsumer<String, String>(Map.of(
                 ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, kafka.getBootstrapServers(),

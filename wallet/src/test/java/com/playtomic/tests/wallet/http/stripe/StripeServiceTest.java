@@ -1,7 +1,7 @@
 package com.playtomic.tests.wallet.http.stripe;
 
 import com.playtomic.tests.common.http.NonRetryingWebClientFactory;
-import com.playtomic.tests.wallet.configs.StripeSimulatorProperties;
+import com.playtomic.tests.wallet.configs.StripeSimulatorProps;
 import lombok.Value;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -149,9 +149,10 @@ class StripeServiceTest {
                         }))
                 .bindNow();
         String baseUrl = "http://127.0.0.1:" + server.port();
-        var settings = new StripeSimulatorProperties(URI.create(baseUrl + "/charges"),
+        var settings = new StripeSimulatorProps(URI.create(baseUrl + "/charges"),
                 baseUrl + "/payments/{payment_id}/refunds", Duration.ofSeconds(1), Duration.ofSeconds(2));
-        return new StripeService(settings, new NonRetryingWebClientFactory(WebClient.builder(), resources));
+        var factory = new NonRetryingWebClientFactory(WebClient.builder(), resources);
+        return new StripeService(settings, factory.create(settings.getConnectTimeout()));
     }
 
     private static Mono<Void> json(HttpServerResponse response, int status, String body) {

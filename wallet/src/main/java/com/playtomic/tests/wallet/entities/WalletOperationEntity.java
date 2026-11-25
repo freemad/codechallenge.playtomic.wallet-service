@@ -1,7 +1,6 @@
 package com.playtomic.tests.wallet.entities;
 
 import com.playtomic.tests.common.contracts.models.IEntity;
-import com.playtomic.tests.wallet.models.WalletOperationModel;
 import lombok.EqualsAndHashCode;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
@@ -30,11 +29,11 @@ public class WalletOperationEntity implements IEntity<String> {
     @MongoId
     String id;
     String walletId;
-    WalletOperationModel.Type type;
+    Type type;
     @Field(targetType = FieldType.DECIMAL128)
     BigDecimal amount;
     String currency;
-    WalletOperationModel.Status status;
+    Status status;
     @Field(targetType = FieldType.DECIMAL128)
     BigDecimal resultingBalance;
     Instant updatedAt;
@@ -46,4 +45,11 @@ public class WalletOperationEntity implements IEntity<String> {
     @EqualsAndHashCode.Exclude
     @ToString.Exclude
     boolean newRecord;
+
+    public enum Type { TOP_UP, SPEND }
+
+    public enum Status {
+        PENDING, REVIEW_REQUIRED, RECEIPT_RECORDED, SUCCEEDED, INSUFFICIENT_FUNDS,
+        PAYMENT_REJECTED, PROVIDER_UNAVAILABLE, WALLET_UNAVAILABLE
+    }
 }

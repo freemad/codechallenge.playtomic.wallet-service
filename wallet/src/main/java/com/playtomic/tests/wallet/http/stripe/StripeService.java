@@ -2,11 +2,13 @@ package com.playtomic.tests.wallet.http.stripe;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.playtomic.tests.common.http.NonRetryingWebClientFactory;
-import com.playtomic.tests.wallet.configs.StripeSimulatorProperties;
+import com.playtomic.tests.wallet.configs.StripeSimulatorProps;
 import lombok.AllArgsConstructor;
 import lombok.NonNull;
+import lombok.RequiredArgsConstructor;
 import lombok.experimental.Accessors;
 import org.springframework.core.codec.CodecException;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientException;
@@ -17,20 +19,19 @@ import java.math.BigDecimal;
 import java.net.URI;
 import java.util.concurrent.TimeoutException;
 
+import static com.playtomic.tests.wallet.constants.StripeSimulatorParam.AMOUNT_FIELD;
+import static com.playtomic.tests.wallet.constants.StripeSimulatorParam.CREDIT_CARD_FIELD;
+
 
 /**
  * Handles communication with the supplied payment simulator.
  */
 @Service
+@RequiredArgsConstructor
 public class StripeService {
 
-    private final StripeSimulatorProperties properties;
+    private final StripeSimulatorProps simulatorProps;
     private final WebClient webClient;
-
-    public StripeService(StripeSimulatorProperties properties, NonRetryingWebClientFactory clients) {
-        this.properties = properties;
-        this.webClient = clients.create(properties.getConnectTimeout());
-    }
 
     /**
      * Charges money in the credit card.
@@ -42,10 +43,10 @@ public class StripeService {
      */
     public Mono<Payment> charge(@NonNull String creditCardNumber, @NonNull BigDecimal amount) {
         return webClient.post()
-                .uri(properties.getChargesUri())
+                .uri(simulatorProps.getChargesUri())
                 .bodyValue(new ChargeRequest(creditCardNumber, amount))
                 .retrieve()
-                .onStatus(status -> status.value() == 422,
+                .onStatus(HttpStatus.UNPROCESSABLE_CONTENT::equals,
                         response -> Mono.just(new StripeAmountTooSmallException()))
                 .onStatus(status -> !status.is2xxSuccessful(), response -> response.createException())
                 .bodyToMono(Payment.class)
@@ -57,7 +58,7 @@ public class StripeService {
      * Refunds the specified payment.
      */
     public Mono<Void> refund(@NonNull String paymentId) {
-        URI uri = UriComponentsBuilder.fromUriString(properties.getRefundsUri())
+        URI uri = UriComponentsBuilder.fromUriString(simulatorProps.getRefundsUri())
                 .encode()
                 .buildAndExpand(paymentId)
                 .toUri();
@@ -71,7 +72,7 @@ public class StripeService {
     }
 
     private <T> Mono<T> withRequestTimeout(Mono<T> request) {
-        return request.timeout(properties.getRequestTimeout())
+        return request.timeout(simulatorProps.getRequestTimeout())
                 .onErrorMap(error -> error instanceof TimeoutException
                                 || error instanceof WebClientException || error instanceof CodecException,
                         error -> new StripeServiceException("Payment provider outcome could not be confirmed", error));
@@ -82,11 +83,11 @@ public class StripeService {
     private static class ChargeRequest {
 
         @NonNull
-        @JsonProperty("credit_card")
+        @JsonProperty(CREDIT_CARD_FIELD)
         String creditCardNumber;
 
         @NonNull
-        @JsonProperty("amount")
+        @JsonProperty(AMOUNT_FIELD)
         BigDecimal amount;
     }
 }

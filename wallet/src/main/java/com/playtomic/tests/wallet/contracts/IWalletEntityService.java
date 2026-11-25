@@ -11,7 +11,7 @@ import java.util.Collection;
 import java.util.function.Function;
 
 /** Reuses shared reads and mapping; service writes require dedicated commands. */
-public interface IWalletEntityAccess<M extends IModel, E extends IEntity<String>> extends IEntityService<E, M, String> {
+public interface IWalletEntityService<M extends IModel, E extends IEntity<String>> extends IEntityService<E, M, String> {
     IEntityToModelMapper<E, M, String> getMapper();
 
     @Override
