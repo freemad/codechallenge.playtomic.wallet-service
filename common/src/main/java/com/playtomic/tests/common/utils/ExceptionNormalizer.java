@@ -13,8 +13,11 @@ import javax.security.sasl.AuthenticationException;
 import java.io.IOException;
 import java.net.ConnectException;
 import java.nio.file.AccessDeniedException;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Predicate;
 
 /**
  * Normalizes application failures while preserving business errors, transport statuses and control flow.
@@ -50,7 +53,8 @@ public final class ExceptionNormalizer {
      * @return business exception, or the unchanged business, transport or control-flow exception
      */
     public static Exception normalize(Exception error, CommonErrorCode fallbackCode, String context) {
-        if (error instanceof BusinessException || isControlFlow(error) || Exceptions.isFatal(error)
+        if (error instanceof BusinessException || isControlFlow(error)
+                || hasCause(error, cause -> cause instanceof Error || Exceptions.isFatal(cause))
                 || error instanceof ErrorResponseException || error instanceof WebClientResponseException
                 || error instanceof AuthenticationException || error instanceof AccessDeniedException) {
             return error;
@@ -75,6 +79,24 @@ public final class ExceptionNormalizer {
      * @return whether it represents cancellation or interruption
      */
     public static boolean isControlFlow(Throwable error) {
-        return error instanceof CancellationException || error instanceof InterruptedException || Exceptions.isCancel(error);
+        return hasCause(error, cause -> cause instanceof CancellationException
+                || cause instanceof InterruptedException || Exceptions.isCancel(cause));
+    }
+
+    private static boolean hasCause(Throwable error, Predicate<Throwable> matches) {
+        if (error == null || matches.test(error)) {
+            return error != null;
+        }
+        if (error.getCause() == null) {
+            return false;
+        }
+        var seen = Collections.newSetFromMap(new IdentityHashMap<Throwable, Boolean>());
+        seen.add(error);
+        for (Throwable cause = error.getCause(); cause != null && seen.add(cause); cause = cause.getCause()) {
+            if (matches.test(cause)) {
+                return true;
+            }
+        }
+        return false;
     }
 }
