@@ -1,22 +1,59 @@
 package com.playtomic.tests.wallet.repositories;
 
 import com.playtomic.tests.wallet.entities.WalletOperationEntity;
-import com.playtomic.tests.wallet.models.WalletOperationModel.Status;
-import reactor.core.publisher.Flux;
+import com.playtomic.tests.wallet.entities.WalletOperationEntity.Status;
+import lombok.RequiredArgsConstructor;
+import org.bson.types.Decimal128;
+import org.springframework.data.mongodb.core.FindAndModifyOptions;
+import org.springframework.data.mongodb.core.ReactiveMongoOperations;
+import org.springframework.data.mongodb.core.index.Index;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
+import org.springframework.stereotype.Repository;
 import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.Arrays;
 
-public interface WalletOperationMongoOperations {
-    Mono<String> ensureReconciliationIndex();
+import static com.playtomic.tests.wallet.entities.WalletOperationEntity.Type.TOP_UP;
+import static org.springframework.data.domain.Sort.Direction.ASC;
 
-    Flux<WalletOperationEntity> reconciliationBatch(Status status, Instant cutoff, int limit);
+@Repository
+@RequiredArgsConstructor
+class WalletOperationMongoOperations implements IWalletOperationMongoOperations {
+    private static final String TYPE = "type";
+    private static final String STATUS = "status";
+    private static final String UPDATED_AT = "updatedAt";
 
-    Mono<Void> deferReceiptRecovery(String id, Instant expectedUpdatedAt);
+    private final ReactiveMongoOperations mongo;
 
-    Mono<WalletOperationEntity> transitionTopUp(String id, Status next, Status... expected);
+    @Override
+    public Mono<String> ensureReconciliationIndex() {
+        return mongo.indexOps(WalletOperationEntity.class)
+                .createIndex(new Index().on(TYPE, ASC).on(STATUS, ASC).on(UPDATED_AT, ASC).on("_id", ASC));
+    }
 
-    Mono<WalletOperationEntity> finalizeOperation(String id, Status expected, Status next, BigDecimal balance);
+    @Override
+    public Mono<WalletOperationEntity> transitionTopUp(String id, Status next, Status... expected) {
+        var criteria = Criteria.where("id").is(id).and(TYPE).is(TOP_UP).and(STATUS).in(Arrays.asList(expected));
+        return Mono.defer(() -> update(criteria, changeStatus(next)));
+    }
+
+    @Override
+    public Mono<WalletOperationEntity> finalizeOperation(String id, Status expected, Status next, BigDecimal balance) {
+        var criteria = Criteria.where("id").is(id).and(STATUS).is(expected);
+        return Mono.defer(() -> update(criteria, changeStatus(next)
+                .set("resultingBalance", balance == null ? null : new Decimal128(balance))));
+    }
+
+    private static Update changeStatus(Status next) {
+        return new Update().set(STATUS, next).set(UPDATED_AT, Instant.now());
+    }
+
+    private Mono<WalletOperationEntity> update(Criteria criteria, Update update) {
+        return mongo.findAndModify(Query.query(criteria), update, FindAndModifyOptions.options().returnNew(true),
+                WalletOperationEntity.class);
+    }
 }
-

@@ -4,6 +4,7 @@ import com.playtomic.tests.common.enums.CommonErrorCode;
 import com.playtomic.tests.common.exceptions.BusinessException;
 import com.playtomic.tests.common.utils.ExceptionNormalizer;
 import com.playtomic.tests.wallet.enums.WalletErrorCode;
+import com.playtomic.tests.wallet.services.entity.WalletEntityService;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.http.HttpStatus;
@@ -23,7 +24,7 @@ class WalletLookupServiceTest {
     private static final Duration DEADLINE = Duration.ofSeconds(5);
     private static final String ID = "wallet-id";
 
-    private final WalletService repository = mock(WalletService.class);
+    private final WalletEntityService repository = mock(WalletEntityService.class);
     private final WalletLookupService service = new WalletLookupService(repository);
 
     @Test

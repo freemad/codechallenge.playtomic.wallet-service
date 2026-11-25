@@ -8,6 +8,9 @@ import java.io.Serial;
 import java.math.BigDecimal;
 import java.time.Instant;
 
+import com.playtomic.tests.wallet.enums.WalletOperationStatus;
+import com.playtomic.tests.wallet.enums.WalletOperationType;
+
 @Value
 @Accessors(chain = true)
 public class WalletOperationModel implements IModel {
@@ -16,22 +19,15 @@ public class WalletOperationModel implements IModel {
 
     String id;
     String walletId;
-    Type type;
+    WalletOperationType type;
     BigDecimal amount;
     String currency;
-    Status status;
+    WalletOperationStatus status;
     BigDecimal resultingBalance;
     Instant updatedAt;
 
     public boolean matches(WalletOperationModel request) {
         return walletId.equals(request.walletId) && type == request.type
                 && amount.compareTo(request.amount) == 0 && currency.equals(request.currency);
-    }
-
-    public enum Type { TOP_UP, SPEND }
-
-    public enum Status {
-        PENDING, REVIEW_REQUIRED, RECEIPT_RECORDED, SUCCEEDED, INSUFFICIENT_FUNDS,
-        PAYMENT_REJECTED, PROVIDER_UNAVAILABLE, WALLET_UNAVAILABLE
     }
 }

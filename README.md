@@ -69,6 +69,31 @@ return the recorded result, not the current wallet balance.
 The public write contract, simulator currency and amount policy, and any
 separate immutable ledger are not defined by these internal methods.
 
+### Worker configuration
+
+Both workers are disabled by default. The wallet's `application.yaml` defines
+these defaults and binds them to validated `wallet.reconciliation` and
+`wallet.outbox` settings.
+
+| Environment variable | Default | Purpose |
+| --- | --- | --- |
+| `WALLET_RECONCILIATION_INTERVAL` | `15s` | Fixed delay between runs |
+| `WALLET_RECONCILIATION_LEASE` | `1m` | Exclusive job lease |
+| `WALLET_RECONCILIATION_RUN_TIMEOUT` | `25s` | Timeout for work under the lease |
+| `WALLET_RECONCILIATION_STALE_PENDING_AGE` | `2m` | Minimum pending age before review |
+| `WALLET_RECONCILIATION_RECEIPT_DELAY` | `15s` | Minimum receipt age before local recovery |
+| `WALLET_RECONCILIATION_BATCH_SIZE` | `25` | Maximum operations per status per run |
+| `WALLET_OUTBOX_INTERVAL` | `2s` | Fixed delay between runs |
+| `WALLET_OUTBOX_TOPIC` | `wallet.events.v1` | Kafka destination |
+| `WALLET_OUTBOX_CLAIM_LEASE` | `45s` | Exclusive event claim |
+| `WALLET_OUTBOX_SEND_TIMEOUT` | `20s` | Timeout for publishing an event |
+| `WALLET_OUTBOX_BATCH_SIZE` | `25` | Maximum claims per run |
+
+Settings are validated at startup even when the workers are disabled. Use
+positive durations with explicit units and positive batch sizes. The job lease
+must exceed the run timeout. The outbox claim lease must exceed the send timeout;
+leave enough time for the database acknowledgment after broker success.
+
 ## Original exercise scaffold
 
 So you can focus on these problems, you have here a maven project with a Spring Boot application. It already contains

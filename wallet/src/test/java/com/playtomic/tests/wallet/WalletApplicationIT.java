@@ -3,17 +3,21 @@ package com.playtomic.tests.wallet;
 import com.playtomic.tests.common.exceptions.CommonExceptionHandler;
 import com.playtomic.tests.common.models.Error;
 import com.playtomic.tests.common.models.Outcome;
+import com.playtomic.tests.wallet.configs.WalletReconciliationProps;
 import com.playtomic.tests.wallet.enums.WalletErrorCode;
 import com.playtomic.tests.wallet.http.stripe.Payment;
 import com.playtomic.tests.wallet.http.stripe.StripeService;
 import com.playtomic.tests.wallet.http.stripe.StripeServiceException;
 import com.playtomic.tests.wallet.jobs.WalletReconciliationJob;
 import com.playtomic.tests.wallet.models.WalletOperationModel;
+import com.playtomic.tests.wallet.repositories.WalletOperationRepository;
 import com.playtomic.tests.wallet.services.WalletMutationService;
 import com.playtomic.tests.wallet.services.WalletLookupService;
-import com.playtomic.tests.wallet.services.WalletJobLeaseService;
 import com.playtomic.tests.wallet.services.WalletOperationService;
-import com.playtomic.tests.wallet.services.WalletOutboxService;
+import com.playtomic.tests.wallet.services.entity.WalletJobLeaseEntityService;
+import com.playtomic.tests.wallet.services.entity.WalletOperationEntityService;
+import com.playtomic.tests.wallet.services.entity.WalletOutboxEntityService;
+import com.playtomic.tests.wallet.entities.WalletOperationEntity;
 import org.bson.Document;
 import org.bson.types.Decimal128;
 import org.junit.jupiter.api.Test;
@@ -25,6 +29,7 @@ import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTest
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
@@ -46,7 +51,8 @@ import java.util.Date;
 import java.util.Optional;
 import java.util.UUID;
 
-import static com.playtomic.tests.wallet.models.WalletOperationModel.Status.*;
+import static com.playtomic.tests.wallet.enums.WalletOperationStatus.*;
+import static com.playtomic.tests.wallet.enums.WalletOperationType.WALLET_OPERATION_TYPE_TOP_UP;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 
@@ -79,10 +85,19 @@ class WalletApplicationIT {
     private WalletOperationService operations;
 
     @Autowired
-    private WalletJobLeaseService leases;
+    private WalletOperationEntityService operationEntities;
 
     @Autowired
-    private WalletOutboxService outbox;
+    private WalletJobLeaseEntityService leases;
+
+    @Autowired
+    private WalletReconciliationProps reconciliationProperties;
+
+    @Autowired
+    private WalletOperationRepository operationRepository;
+
+    @Autowired
+    private WalletOutboxEntityService outbox;
 
     @MockitoBean
     private StripeService stripe;
@@ -184,16 +199,16 @@ class WalletApplicationIT {
                         .collectList()
                         .doOnNext(results -> {
                             assertThat(results).hasSize(8).allSatisfy(result -> {
-                                assertThat(result.getStatus()).isIn(PENDING, SUCCEEDED);
+                                assertThat(result.getStatus()).isIn(WALLET_OPERATION_STATUS_PENDING, WALLET_OPERATION_STATUS_SUCCEEDED);
                                 assertThat(result.getId()).isEqualTo("7a6dc2d73b0ad630b1681894d4c5bb2eb301d0dfbc01dca506d140f31ae77d82");
                             });
-                            assertThat(results).anyMatch(result -> result.getStatus() == SUCCEEDED);
+                            assertThat(results).anyMatch(result -> result.getStatus() == WALLET_OPERATION_STATUS_SUCCEEDED);
                         })
                         .then(mutations.spend("credit-race", "new-key", BigDecimal.ONE, "EUR")
-                                .doOnNext(spend -> assertThat(successfulResult(spend).getStatus()).isEqualTo(SUCCEEDED)))
+                                .doOnNext(spend -> assertThat(successfulResult(spend).getStatus()).isEqualTo(WALLET_OPERATION_STATUS_SUCCEEDED)))
                         .then(topUp))
                 .assertNext(result -> {
-                    assertThat(result.getStatus()).isEqualTo(SUCCEEDED);
+                    assertThat(result.getStatus()).isEqualTo(WALLET_OPERATION_STATUS_SUCCEEDED);
                     assertThat(result.getResultingBalance()).isEqualByComparingTo("15.25");
                 })
                 .expectComplete().verify(DEADLINE);
@@ -229,7 +244,8 @@ class WalletApplicationIT {
                                                 .map(WalletApplicationIT::successfulResult)
                                                 .doOnNext(replay -> assertThat(replay).isEqualTo(result)))))
                         .map(WalletOperationModel::getStatus).collectList())
-                .assertNext(statuses -> assertThat(statuses).containsExactlyInAnyOrder(SUCCEEDED, INSUFFICIENT_FUNDS))
+                .assertNext(statuses -> assertThat(statuses).containsExactlyInAnyOrder(
+                        WALLET_OPERATION_STATUS_SUCCEEDED, WALLET_OPERATION_STATUS_INSUFFICIENT_FUNDS))
                 .expectComplete().verify(DEADLINE);
         StepVerifier.create(wallets.findById("debit-race").map(result -> successfulResult(result).getBalance()))
                 .assertNext(balance -> assertThat(balance).isEqualByComparingTo("3.00"))
@@ -246,7 +262,8 @@ class WalletApplicationIT {
                 .map(WalletApplicationIT::successfulResult);
         StepVerifier.create(seedWallet("uncertain", "0").thenMany(Flux.concat(topUp, topUp))
                         .map(WalletOperationModel::getStatus))
-                .expectNext(REVIEW_REQUIRED, REVIEW_REQUIRED).expectComplete().verify(DEADLINE);
+                .expectNext(WALLET_OPERATION_STATUS_REVIEW_REQUIRED, WALLET_OPERATION_STATUS_REVIEW_REQUIRED)
+                .expectComplete().verify(DEADLINE);
         StepVerifier.create(outboxCount("uncertain", "WalletCredited"))
                 .expectNext(0L).expectComplete().verify(DEADLINE);
         verify(stripe, times(1)).charge(TEST_CARD, BigDecimal.ONE);
@@ -255,26 +272,26 @@ class WalletApplicationIT {
     @Test
     void recordedReceiptSurvivesAFailedOutboxWriteAndCanBeAppliedLater() {
         String id = "receipt-recovery-operation";
-        var request = new WalletOperationModel(id, "receipt-recovery", WalletOperationModel.Type.TOP_UP,
-                new BigDecimal("2.00"), "EUR", PENDING, null, Instant.now());
+        var request = new WalletOperationModel(id, "receipt-recovery", WALLET_OPERATION_TYPE_TOP_UP,
+                new BigDecimal("2.00"), "EUR", WALLET_OPERATION_STATUS_PENDING, null, Instant.now());
         Query eventId = Query.query(Criteria.where("_id").is(id));
         StepVerifier.create(seedWallet("receipt-recovery", "4.00").then(operations.reserve(request))
                         .doOnNext(WalletApplicationIT::presentResult)
                         .then(operations.recordReceipt(id, "payment-recovery"))
-                        .doOnNext(result -> assertThat(presentResult(result).getStatus()).isEqualTo(RECEIPT_RECORDED))
+                        .doOnNext(result -> assertThat(presentResult(result).getStatus()).isEqualTo(WALLET_OPERATION_STATUS_RECEIPT_RECORDED))
                         .then(mongo.insert(new Document("_id", id), "wallet_outbox"))
                         .then(operations.apply(id)))
                 .expectError(org.springframework.dao.DuplicateKeyException.class).verify(DEADLINE);
         StepVerifier.create(operations.find(id).map(WalletApplicationIT::presentResult)
                 .zipWith(wallets.findById("receipt-recovery").map(WalletApplicationIT::successfulResult)))
                 .assertNext(pair -> {
-                    assertThat(pair.getT1().getStatus()).isEqualTo(RECEIPT_RECORDED);
+                    assertThat(pair.getT1().getStatus()).isEqualTo(WALLET_OPERATION_STATUS_RECEIPT_RECORDED);
                     assertThat(pair.getT2().getBalance()).isEqualByComparingTo("4.00");
                 }).expectComplete().verify(DEADLINE);
         StepVerifier.create(mongo.remove(eventId, "wallet_outbox").then(operations.apply(id))
                         .map(WalletApplicationIT::presentResult))
                 .assertNext(result -> {
-                    assertThat(result.getStatus()).isEqualTo(SUCCEEDED);
+                    assertThat(result.getStatus()).isEqualTo(WALLET_OPERATION_STATUS_SUCCEEDED);
                     assertThat(result.getResultingBalance()).isEqualByComparingTo("6.00");
                 }).expectComplete().verify(DEADLINE);
         verifyNoInteractions(stripe);
@@ -284,11 +301,11 @@ class WalletApplicationIT {
     void reconciliationAppliesAReceiptAndFlagsAStaleChargeWithoutContactingStripe() {
         Instant stale = Instant.now().minus(Duration.ofMinutes(5));
         String walletId = "reconciliation-wallet";
-        var uncertain = new WalletOperationModel("stale-charge", walletId, WalletOperationModel.Type.TOP_UP,
-                BigDecimal.ONE, "EUR", PENDING, null, stale);
-        var receipted = new WalletOperationModel("stale-receipt", walletId, WalletOperationModel.Type.TOP_UP,
-                BigDecimal.ONE, "EUR", PENDING, null, stale);
-        var job = new WalletReconciliationJob(operations, leases);
+        var uncertain = new WalletOperationModel("stale-charge", walletId, WALLET_OPERATION_TYPE_TOP_UP,
+                BigDecimal.ONE, "EUR", WALLET_OPERATION_STATUS_PENDING, null, stale);
+        var receipted = new WalletOperationModel("stale-receipt", walletId, WALLET_OPERATION_TYPE_TOP_UP,
+                BigDecimal.ONE, "EUR", WALLET_OPERATION_STATUS_PENDING, null, stale);
+        var job = new WalletReconciliationJob(operations, operationEntities, leases, reconciliationProperties);
         Query id = Query.query(Criteria.where("_id").is(receipted.getId()));
         Mono<Void> setup = seedWallet(walletId, "1").then(operations.reserve(uncertain))
                 .doOnNext(WalletApplicationIT::presentResult)
@@ -299,20 +316,70 @@ class WalletApplicationIT {
                 .then();
         Mono<WalletOperationModel> outcome = operations.find(uncertain.getId()).map(WalletApplicationIT::presentResult);
         StepVerifier.create(setup.then(leases.acquire("payment-reconciliation", Duration.ofMinutes(1)))
-                        .map(WalletApplicationIT::presentResult)
+                        .switchIfEmpty(Mono.error(() -> new AssertionError("Expected to acquire the lease")))
                         .doOnNext(token -> assertThat(UUID.fromString(token).version()).isEqualTo(7))
                         .flatMap(token -> job.reconcile().then(outcome)
-                                .doOnNext(result -> assertThat(result.getStatus()).isEqualTo(PENDING))
-                                .then(leases.release("payment-reconciliation", token))
-                                .doOnNext(WalletApplicationIT::successfulResult))
+                                .doOnNext(result -> assertThat(result.getStatus()).isEqualTo(WALLET_OPERATION_STATUS_PENDING))
+                                .then(leases.release("payment-reconciliation", token)))
                         .then(job.reconcile())
                         .then(outcome.zipWith(operations.find(receipted.getId()).map(WalletApplicationIT::presentResult))))
                 .assertNext(pair -> {
-                    assertThat(pair.getT1().getStatus()).isEqualTo(REVIEW_REQUIRED);
-                    assertThat(pair.getT2().getStatus()).isEqualTo(SUCCEEDED);
+                    assertThat(pair.getT1().getStatus()).isEqualTo(WALLET_OPERATION_STATUS_REVIEW_REQUIRED);
+                    assertThat(pair.getT2().getStatus()).isEqualTo(WALLET_OPERATION_STATUS_SUCCEEDED);
                     assertThat(pair.getT2().getResultingBalance()).isEqualByComparingTo("2");
                 }).expectComplete().verify(DEADLINE);
         verifyNoInteractions(stripe);
+    }
+
+    @Test
+    void reconciliationQueryOrdersAndLimitsResultsAndDeferralFencesStaleObservations() {
+        String prefix = "repository-reconciliation-";
+        Instant cutoff = Instant.parse("2000-01-02T00:00:00Z");
+        Instant oldest = cutoff.minusSeconds(1);
+        Instant deferred = cutoff.plusSeconds(1);
+        String first = prefix + "a";
+        var ids = java.util.List.of(first, prefix + "b", prefix + "c", prefix + "late",
+                prefix + "debit", prefix + "pending");
+        var rows = java.util.List.of(
+                operationRow(ids.get(1), "TOP_UP", "RECEIPT_RECORDED", oldest),
+                operationRow(first, "TOP_UP", "RECEIPT_RECORDED", oldest),
+                operationRow(ids.get(2), "TOP_UP", "RECEIPT_RECORDED", cutoff),
+                operationRow(ids.get(3), "TOP_UP", "RECEIPT_RECORDED", deferred),
+                operationRow(ids.get(4), "SPEND", "RECEIPT_RECORDED", oldest),
+                operationRow(ids.get(5), "TOP_UP", "PENDING", oldest));
+        String collection = "wallet_operations";
+        var cleanup = Query.query(Criteria.where("_id").in(ids));
+
+        Mono<Void> checks = operationRepository.findByTypeAndStatusAndUpdatedAtLessThanEqualOrderByUpdatedAtAscIdAsc(
+                        WalletOperationEntity.Type.TOP_UP, WalletOperationEntity.Status.RECEIPT_RECORDED,
+                        cutoff, PageRequest.ofSize(3))
+                .map(row -> row.getId()).collectList()
+                .doOnNext(batch -> assertThat(batch).containsExactly(first, ids.get(1), ids.get(2)))
+                .thenMany(Flux.concat(
+                        operationRepository.deferReceiptRecovery(first, oldest, deferred),
+                        operationRepository.deferReceiptRecovery(first, oldest, deferred.plusSeconds(1)),
+                        operationRepository.deferReceiptRecovery(ids.get(4), oldest, deferred),
+                        operationRepository.deferReceiptRecovery(ids.get(5), oldest, deferred)))
+                .collectList().doOnNext(counts -> assertThat(counts).containsExactly(1L, 0L, 0L, 0L))
+                .then(operationRepository.findById(first))
+                .switchIfEmpty(Mono.error(() -> new AssertionError("Deferred operation disappeared")))
+                .doOnNext(row -> assertThat(row.getUpdatedAt()).isEqualTo(deferred))
+                .thenMany(operationRepository.findByTypeAndStatusAndUpdatedAtLessThanEqualOrderByUpdatedAtAscIdAsc(
+                        WalletOperationEntity.Type.TOP_UP, WalletOperationEntity.Status.RECEIPT_RECORDED,
+                        cutoff, PageRequest.ofSize(1)))
+                .map(row -> row.getId()).collectList()
+                .doOnNext(batch -> assertThat(batch).containsExactly(ids.get(1))).then();
+
+        StepVerifier.create(Mono.usingWhen(
+                        mongo.execute(collection, target -> target.insertMany(rows)).single(), ignored -> checks,
+                        ignored -> mongo.remove(cleanup, collection).then()))
+                .expectComplete().verify(DEADLINE);
+    }
+
+    private static Document operationRow(String id, String type, String status, Instant updatedAt) {
+        return new Document("_id", id).append("walletId", "repository-reconciliation")
+                .append("type", type).append("status", status).append("updatedAt", Date.from(updatedAt))
+                .append("amount", new Decimal128(BigDecimal.ONE)).append("currency", "EUR");
     }
 
     @Test
@@ -326,21 +393,17 @@ class WalletApplicationIT {
                 .append("expiresAt", Date.from(Instant.now().plus(duration)));
 
         StepVerifier.create(mongo.execute(collection, rows -> rows.insertOne(legacy)).then(leases.acquire(job, duration)))
-                .assertNext(result -> assertThat(successfulResult(result)).isEmpty())
                 .expectComplete().verify(DEADLINE);
 
         StepVerifier.create(mongo.updateFirst(id, new Update().set("expiresAt", Date.from(Instant.EPOCH)), collection)
                         .then(leases.acquire(job, duration))
-                        .map(WalletApplicationIT::presentResult)
                         .flatMap(token -> {
                             assertThat(token).isNotEqualTo(oldToken);
                             assertThat(UUID.fromString(token).version()).isEqualTo(7);
                             return leases.release(job, oldToken)
-                                    .doOnNext(WalletApplicationIT::successfulResult)
                                     .then(mongo.findOne(id, Document.class, collection))
                                     .doOnNext(row -> assertThat(row.getString("token")).isEqualTo(token))
-                                    .flatMap(row -> leases.release(job, token)
-                                            .doOnNext(WalletApplicationIT::successfulResult).then(mongo.exists(id, collection)));
+                                    .flatMap(row -> leases.release(job, token).then(mongo.exists(id, collection)));
                         }))
                 .expectNext(false).expectComplete().verify(DEADLINE);
     }
@@ -350,23 +413,23 @@ class WalletApplicationIT {
         Mono<WalletOperationModel> operation = seedWallet("outbox-lease", "3")
                 .then(mutations.spend("outbox-lease", "lease-key", BigDecimal.ONE, "EUR"))
                 .map(WalletApplicationIT::successfulResult);
-        StepVerifier.create(outbox.ensurePublishIndex().doOnNext(WalletApplicationIT::successfulResult)
+        StepVerifier.create(outbox.ensurePublishIndex()
                 .then(operation).flatMap(result -> {
                     Query id = Query.query(Criteria.where("_id").is(result.getId()));
                     Mono<?> makeEarliest = mongo.updateFirst(id,
                             new Update().set("availableAt", Date.from(Instant.EPOCH)), "wallet_outbox");
                     return makeEarliest.then(outbox.claim(Duration.ofMinutes(1)))
-                            .map(WalletApplicationIT::presentResult).flatMap(first -> {
+                            .flatMap(first -> {
                                 assertThat(first.getId()).isEqualTo(result.getId());
                                 assertThat(UUID.fromString(first.getLeaseToken()).version()).isEqualTo(7);
                                 return makeEarliest.then(outbox.claim(Duration.ofMinutes(1)))
-                                        .map(WalletApplicationIT::presentResult).flatMap(second -> {
+                                        .flatMap(second -> {
                                             assertThat(second.getId()).isEqualTo(first.getId());
                                             assertThat(second.getLeaseToken()).isNotEqualTo(first.getLeaseToken());
                                             assertThat(UUID.fromString(second.getLeaseToken()).version()).isEqualTo(7);
                                             return outbox.acknowledge(first)
-                                                    .doOnNext(ack -> assertThat(successfulResult(ack)).isFalse())
-                                                    .then(outbox.acknowledge(second)).map(WalletApplicationIT::successfulResult);
+                                                    .doOnNext(ack -> assertThat(ack).isFalse())
+                                                    .then(outbox.acknowledge(second));
                                         });
                             });
                 }))
