@@ -1,4 +1,4 @@
-package com.playtomic.tests.common.enums;
+package com.playtomic.tests.common.utils;
 
 import com.playtomic.tests.common.exceptions.BusinessException;
 import lombok.AccessLevel;

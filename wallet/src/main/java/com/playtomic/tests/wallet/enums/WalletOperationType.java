@@ -5,7 +5,7 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.playtomic.tests.common.constants.CommonParam;
-import com.playtomic.tests.common.enums.EnumLookup;
+import com.playtomic.tests.common.utils.EnumLookup;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
