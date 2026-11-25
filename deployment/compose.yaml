@@ -1,0 +1,56 @@
+x-mongo: &mongo
+  image: &mongo-image mongo:8.3.2-noble
+  command: ["--replSet", "wallet-rs", "--bind_ip_all"]
+  healthcheck:
+    test: ["CMD", "mongosh", "--quiet", "--eval", "quit(db.adminCommand({ping: 1}).ok ? 0 : 1)"]
+    interval: 3s
+    timeout: 5s
+    retries: 20
+
+services:
+  mongo-1:
+    <<: *mongo
+    volumes:
+      - mongo-1-data:/data/db
+
+  mongo-2:
+    <<: *mongo
+    volumes:
+      - mongo-2-data:/data/db
+
+  mongo-3:
+    <<: *mongo
+    volumes:
+      - mongo-3-data:/data/db
+
+  mongo-init:
+    image: *mongo-image
+    depends_on:
+      mongo-1:
+        condition: service_healthy
+      mongo-2:
+        condition: service_healthy
+      mongo-3:
+        condition: service_healthy
+    volumes:
+      - ./init-replica-set.js:/init-replica-set.js:ro
+    command: ["mongosh", "--quiet", "mongodb://mongo-1:27017/admin?directConnection=true", "--file", "/init-replica-set.js"]
+
+  wallet:
+    build:
+      context: ..
+      dockerfile: deployment/wallet.Dockerfile
+    depends_on:
+      mongo-init:
+        condition: service_completed_successfully
+    environment:
+      - SPRING_MONGODB_URI=mongodb://mongo-1:27017,mongo-2:27017,mongo-3:27017/playtomic?replicaSet=wallet-rs&w=majority
+      - STRIPE_SIMULATOR_CHARGESURI
+      - STRIPE_SIMULATOR_REFUNDSURI
+    ports:
+      - "127.0.0.1:${WALLET_HTTP_PORT:-8090}:8090"
+
+volumes:
+  mongo-1-data:
+  mongo-2-data:
+  mongo-3-data:
