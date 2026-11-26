@@ -19,6 +19,8 @@ public enum WalletLogEvent {
     RECEIPT_COMMITTED(INFO, "receipt.committed"), DUPLICATE_RECEIPT(WARN, "receipt.duplicate"),
     FINALIZED(INFO, "operation.finalized"), TRANSACTION_RETRY(DEBUG, "transaction.retry"),
     REVIEW(WARN, "reconciliation.review"), RECOVERY_FAILED(WARN, "reconciliation.apply_failed"),
+    AUDIT_DISCREPANCY(ERROR, "audit.balance_discrepancy"), AUDIT_FAILED(ERROR, "audit.run_failed"),
+    AUDIT_ALERT_FAILED(ERROR, "audit.alert_delivery_incomplete"),
     RECONCILIATION_FAILED(ERROR, "reconciliation.run_failed"),
     BROKER_ACCEPTED(DEBUG, "outbox.broker_accepted"), ACKNOWLEDGED(INFO, "outbox.acknowledged"),
     LOST_LEASE(WARN, "outbox.lost_lease"), DELIVERY_INCOMPLETE(WARN, "outbox.delivery_incomplete"), RELAY_FAILED(ERROR, "outbox.run_failed");
