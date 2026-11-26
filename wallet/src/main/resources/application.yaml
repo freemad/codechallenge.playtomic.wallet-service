@@ -8,17 +8,17 @@ spring.kafka.producer:
   value-serializer: org.apache.kafka.common.serialization.StringSerializer
   properties:
     enable.idempotence: true
-    max.block.ms: 5000
-    delivery.timeout.ms: 15000
-    request.timeout.ms: 10000
+    max.block.ms: ${WALLET_KAFKA_MAX_BLOCK_MS:5000}
+    delivery.timeout.ms: ${WALLET_KAFKA_DELIVERY_TIMEOUT_MS:15000}
+    request.timeout.ms: ${WALLET_KAFKA_REQUEST_TIMEOUT_MS:10000}
 wallet:
   audit:
-    enabled: false
-    interval: 10s
-    lease: 1m
-    timeout: 40s
-    batch-size: 25
-    topic: wallet.audit.alerts.v1
+    enabled: ${WALLET_AUDIT_ENABLED:false}
+    interval: ${WALLET_AUDIT_INTERVAL:10s}
+    lease: ${WALLET_AUDIT_LEASE:1m}
+    timeout: ${WALLET_AUDIT_TIMEOUT:40s}
+    batch-size: ${WALLET_AUDIT_BATCH_SIZE:25}
+    topic: ${WALLET_AUDIT_TOPIC:wallet.audit.alerts.v1}
   top-up:
     http:
       enabled: false
