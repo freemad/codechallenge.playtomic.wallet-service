@@ -103,6 +103,13 @@ class WalletWorkerPropsTest {
     void bindsAuditAndProducerDefaults() {
         runner.run(context -> {
             var audit = context.getBean(WalletAuditProps.class);
+            var env = context.getEnvironment();
+            assertThat(env.getProperty("wallet.audit.enabled")).isEqualTo("false");
+            assertThat(env.getProperty("wallet.audit.interval")).isEqualTo("10s");
+            assertThat(audit.getLease()).isEqualTo(Duration.ofMinutes(1));
+            assertThat(audit.getTimeout()).isEqualTo(Duration.ofSeconds(40));
+            assertThat(env.getProperty("spring.kafka.producer.properties.delivery.timeout.ms")).isEqualTo("15000");
+            assertThat(env.getProperty("spring.kafka.producer.properties.request.timeout.ms")).isEqualTo("10000");
             assertThat(audit.getBatchSize()).isEqualTo(25);
             assertThat(audit.getTopic()).isEqualTo("wallet.audit.alerts.v1");
             assertThat(context.getEnvironment().getProperty("spring.kafka.producer.properties.max.block.ms")).isEqualTo("5000");
@@ -112,10 +119,17 @@ class WalletWorkerPropsTest {
     @Test
     void bindsAuditAndProducerEnvironmentOverrides() {
         runner.withPropertyValues("WALLET_AUDIT_BATCH_SIZE=7", "WALLET_AUDIT_TOPIC=test.audit",
-                "WALLET_KAFKA_MAX_BLOCK_MS=1200").run(context -> {
+                "WALLET_AUDIT_ENABLED=true", "WALLET_AUDIT_INTERVAL=3s", "WALLET_AUDIT_LEASE=30s",
+                "WALLET_AUDIT_TIMEOUT=20s", "WALLET_KAFKA_DELIVERY_TIMEOUT_MS=9000",
+                "WALLET_KAFKA_REQUEST_TIMEOUT_MS=6000", "WALLET_KAFKA_MAX_BLOCK_MS=1200").run(context -> {
             var audit = context.getBean(WalletAuditProps.class);
-            assertThat(audit.getBatchSize()).isEqualTo(7);
-            assertThat(audit.getTopic()).isEqualTo("test.audit");
+            var env = context.getEnvironment();
+            assertThat(env.getProperty("wallet.audit.enabled")).isEqualTo("true");
+            assertThat(env.getProperty("wallet.audit.interval")).isEqualTo("3s");
+            assertThat(audit.getLease()).isEqualTo(Duration.ofSeconds(30));
+            assertThat(audit.getTimeout()).isEqualTo(Duration.ofSeconds(20));
+            assertThat(env.getProperty("spring.kafka.producer.properties.delivery.timeout.ms")).isEqualTo("9000");
+            assertThat(env.getProperty("spring.kafka.producer.properties.request.timeout.ms")).isEqualTo("6000");
             assertThat(context.getEnvironment().getProperty("spring.kafka.producer.properties.max.block.ms")).isEqualTo("1200");
         });
     }
