@@ -1,5 +1,17 @@
 !.mvn/wrapper/maven-wrapper.jar
 
+# macOS metadata
+.DS_Store
+.AppleDouble/
+.LSOverride
+._*
+.Spotlight-V100/
+.Trashes/
+.fseventsd/
+.TemporaryItems/
+.DocumentRevisions-V100/
+.VolumeIcon.icns
+
 # Local agent guides
 /AGENTS.md
 /skills.md

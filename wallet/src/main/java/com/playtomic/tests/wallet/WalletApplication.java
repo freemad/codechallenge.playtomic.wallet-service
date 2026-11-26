@@ -16,12 +16,12 @@ import org.springframework.context.annotation.Import;
 @ConfigurationPropertiesScan
 @Import({CommonConfig.class, ReactiveHttpClientConfiguration.class, CommonExceptionHandler.class, ObservabilityConfiguration.class})
 public class WalletApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(WalletApplication.class, args);
+    }
+
     @Bean
     StructuredEvents walletEvents() {
         return WalletLogEvent.EVENTS;
     }
-
-	public static void main(String[] args) {
-		SpringApplication.run(WalletApplication.class, args);
-	}
 }

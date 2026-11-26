@@ -1,6 +1,5 @@
 package com.playtomic.tests.common.contracts.dtos;
 
-import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.Map;
 

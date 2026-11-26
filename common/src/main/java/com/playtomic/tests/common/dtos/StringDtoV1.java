@@ -2,13 +2,11 @@ package com.playtomic.tests.common.dtos;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.playtomic.tests.common.contracts.dtos.IDto;
-import com.playtomic.tests.common.contracts.dtos.IErrorDto;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.experimental.Accessors;
 
 import java.io.Serial;
-import java.util.Map;
 
 @Data
 @Accessors(chain = true)

@@ -1,7 +1,6 @@
 package com.playtomic.tests.simulator.controllers;
 
 import com.playtomic.tests.common.utils.UuidV7Generator;
-import com.playtomic.tests.simulator.models.SimulationResponses;
 import com.playtomic.tests.simulator.configs.SimulatorProps;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;

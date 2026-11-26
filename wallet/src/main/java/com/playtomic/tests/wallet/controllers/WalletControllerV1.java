@@ -51,7 +51,7 @@ public class WalletControllerV1 {
     private static final String PAYMENT_PROVIDERS_SEGMENT = "payment-providers";
 
     @GetMapping("/log")
-    Mono<ResponseEntity<ResponseDtoV1>> log() {
+    public Mono<ResponseEntity<ResponseDtoV1>> log() {
         return Mono.fromCallable(() -> toResponse(new StringDtoV1().setString(String.valueOf(System.currentTimeMillis())),
                 CacheControl.empty()));
     }

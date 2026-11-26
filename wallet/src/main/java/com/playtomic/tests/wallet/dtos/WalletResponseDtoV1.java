@@ -4,7 +4,6 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.playtomic.tests.common.contracts.dtos.IDto;
 import lombok.AllArgsConstructor;
 import lombok.Data;
-import lombok.Value;
 import lombok.experimental.Accessors;
 
 import java.io.Serial;

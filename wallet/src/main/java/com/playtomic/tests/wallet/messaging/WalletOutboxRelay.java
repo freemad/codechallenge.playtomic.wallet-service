@@ -40,8 +40,8 @@ public class WalletOutboxRelay {
 
     @Scheduled(fixedDelayString = "${" + WalletOutboxProps.PREFIX + ".interval}")
     public Mono<Void> publish() {
-        return indexReady.thenMany(Flux.range(0, properties.batchSize())
-                        .concatMap(ignored -> outbox.claim(properties.claimLease())
+        return indexReady.thenMany(Flux.range(0, properties.getBatchSize())
+                        .concatMap(ignored -> outbox.claim(properties.getClaimLease())
                                 .flatMap(this::send).defaultIfEmpty(false))
                         .takeUntil(published -> !published))
                 .then()
@@ -55,10 +55,10 @@ public class WalletOutboxRelay {
                     var payload = new WalletBalanceEventDtoV1(event.getId(), event.getWalletId(),
                             event.getEventType().getWireValue(), event.getSchemaVersion(), event.getAmount(),
                             event.getCurrency(), event.getResultingBalance(), event.getOccurredAt());
-                    return kafka.send(properties.topic(), event.getWalletId(), json.writeValueAsString(payload));
+                    return kafka.send(properties.getTopic(), event.getWalletId(), json.writeValueAsString(payload));
                 }, true)
                 .subscribeOn(Schedulers.boundedElastic())
-                .timeout(properties.sendTimeout())
+                .timeout(properties.getSendTimeout())
                 .doOnNext(result -> BROKER_ACCEPTED.operation(event.getId()).log())
                 .then(Mono.defer(() -> outbox.acknowledge(event)))
                 .doOnNext(acknowledged -> (acknowledged ? ACKNOWLEDGED : LOST_LEASE).operation(event.getId()).log())

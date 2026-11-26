@@ -226,15 +226,6 @@ class WalletApplicationIT {
         verifyNoInteractions(stripe);
     }
 
-    private WebTestClient.ResponseSpec postTopUp(String id, String key, String amount) {
-        return webClient.post().uri(TOP_UP_PATH, id).contentType(MediaType.APPLICATION_JSON)
-                .header(HEADER_IDEMPOTENCY_KEY, key).bodyValue(topUpBody(amount, HTTP_TEST_CARD)).exchange();
-    }
-
-    private static String topUpBody(String amount, String card) {
-        return "{\"amount\":%s,\"currency\":\"EUR\",\"provider\":\"stripe\",\"creditCardNumber\":\"%s\"}".formatted(amount, card);
-    }
-
     @Test
     void servesHttpAndConnectsToAReactiveMongoReplicaSet() {
         assertThat(applicationContext.getBeansOfType(CommonExceptionHandler.class)).hasSize(1);
@@ -415,6 +406,8 @@ class WalletApplicationIT {
                         .then(operations.apply(id)))
                 .expectError(org.springframework.dao.DuplicateKeyException.class).verify(DEADLINE);
         assertThat(output.getOut()).contains("\"event\":\"receipt.committed\"").doesNotContain("\"event\":\"operation.finalized\"");
+        Query postings = Query.query(Criteria.where("walletId").is("receipt-recovery"));
+        StepVerifier.create(mongo.count(postings, "wallet_ledger")).expectNext(0L).verifyComplete();
         StepVerifier.create(operations.find(id).map(WalletApplicationIT::presentResult)
                 .zipWith(wallets.findById("receipt-recovery").map(WalletApplicationIT::successfulResult)))
                 .assertNext(pair -> {
@@ -426,6 +419,11 @@ class WalletApplicationIT {
                 .assertNext(result -> {
                     assertThat(result.getStatus()).isEqualTo(WALLET_OPERATION_STATUS_SUCCEEDED);
                     assertThat(result.getResultingBalance()).isEqualByComparingTo("6.00");
+                }).expectComplete().verify(DEADLINE);
+        StepVerifier.create(mongo.find(postings, Document.class, "wallet_ledger").single())
+                .assertNext(row -> {
+                    assertThat(row.getLong("sequence")).isEqualTo(1L);
+                    assertThat(row.get("delta", Decimal128.class).bigDecimalValue()).isEqualByComparingTo("2.00");
                 }).expectComplete().verify(DEADLINE);
         verifyNoInteractions(stripe);
     }
@@ -509,12 +507,6 @@ class WalletApplicationIT {
                 .expectComplete().verify(DEADLINE);
     }
 
-    private static Document operationRow(String id, int type, int status, Instant updatedAt) {
-        return new Document("_id", id).append("walletId", "repository-reconciliation")
-                .append("type", type).append("status", status).append("updatedAt", Date.from(updatedAt))
-                .append("amount", new Decimal128(BigDecimal.ONE)).append("currency", "EUR");
-    }
-
     @Test
     void reclaimsALegacyJobLeaseAndFencesStaleRelease() {
         String collection = "wallet_job_leases";
@@ -567,6 +559,21 @@ class WalletApplicationIT {
                             });
                 }))
                 .expectNext(true).expectComplete().verify(DEADLINE);
+    }
+
+    private WebTestClient.ResponseSpec postTopUp(String id, String key, String amount) {
+        return webClient.post().uri(TOP_UP_PATH, id).contentType(MediaType.APPLICATION_JSON)
+                .header(HEADER_IDEMPOTENCY_KEY, key).bodyValue(topUpBody(amount, HTTP_TEST_CARD)).exchange();
+    }
+
+    private static String topUpBody(String amount, String card) {
+        return "{\"amount\":%s,\"currency\":\"EUR\",\"provider\":\"stripe\",\"creditCardNumber\":\"%s\"}".formatted(amount, card);
+    }
+
+    private static Document operationRow(String id, int type, int status, Instant updatedAt) {
+        return new Document("_id", id).append("walletId", "repository-reconciliation")
+                .append("type", type).append("status", status).append("updatedAt", Date.from(updatedAt))
+                .append("amount", new Decimal128(BigDecimal.ONE)).append("currency", "EUR");
     }
 
     private static <T> T presentResult(Outcome<Optional<T>, Error> outcome) {

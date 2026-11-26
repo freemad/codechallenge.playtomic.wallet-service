@@ -46,8 +46,8 @@ public class WalletReconciliationJob {
 
     @Scheduled(fixedDelayString = "${" + WalletReconciliationProps.PREFIX + ".interval}")
     public Mono<Void> reconcile() {
-        return Mono.usingWhen(Mono.defer(() -> leases.acquire(JOB, properties.lease())),
-                token -> indexReady.then(Mono.defer(this::reconcileBatch)).timeout(properties.runTimeout()),
+        return Mono.usingWhen(Mono.defer(() -> leases.acquire(JOB, properties.getLease())),
+                token -> indexReady.then(Mono.defer(this::reconcileBatch)).timeout(properties.getRunTimeout()),
                 token -> leases.release(JOB, token))
                 .onErrorMap(ExceptionNormalizer::normalize)
                 .doOnError(error -> RECONCILIATION_FAILED.fields().log());
@@ -55,7 +55,8 @@ public class WalletReconciliationJob {
 
     private Mono<Void> reconcileBatch() {
         Instant now = Instant.now();
-        return operationEntities.reconciliationBatch(WALLET_OPERATION_STATUS_PENDING, now.minus(properties.stalePendingAge()), properties.batchSize())
+        return operationEntities.reconciliationBatch(WALLET_OPERATION_STATUS_PENDING,
+                        now.minus(properties.getStalePendingAge()), properties.getBatchSize())
                 .concatMap(operation -> operations.markPaymentOutcome(operation.getId(), WALLET_OPERATION_STATUS_REVIEW_REQUIRED)
                         .flatMap(WalletOutcome::optionalValue)
                         .doOnNext(result -> {
@@ -64,7 +65,7 @@ public class WalletReconciliationJob {
                             }
                         }))
                 .thenMany(Flux.defer(() -> operationEntities.reconciliationBatch(
-                        WALLET_OPERATION_STATUS_RECEIPT_RECORDED, now.minus(properties.receiptDelay()), properties.batchSize())))
+                        WALLET_OPERATION_STATUS_RECEIPT_RECORDED, now.minus(properties.getReceiptDelay()), properties.getBatchSize())))
                 .concatMap(operation -> Mono.defer(() -> operations.apply(operation.getId()))
                         .flatMap(WalletOutcome::optionalValue).then()
                         .onErrorMap(ExceptionNormalizer::normalize)

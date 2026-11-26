@@ -45,12 +45,6 @@ class WalletControllerV1Test {
             .controllerAdvice(new CommonExceptionHandler())
             .build();
 
-    private WalletControllerV1 controller(WalletLookupService lookupService) {
-        return new WalletControllerV1(lookupService, mapper, mock(WalletMutationService.class),
-                Mappers.getMapper(WalletTopUpResponseMapperV1.class), new WalletTopUpProviders(Map.of()),
-                new WalletTopUpHttpProps(false, null));
-    }
-
     @Test
     void returnsTheWalletInAVersionedEnvelope() {
         when(lookup.findById("wallet-1"))
@@ -197,5 +191,11 @@ class WalletControllerV1Test {
                 .jsonPath("$.success").isEqualTo(false)
                 .jsonPath("$.error.code").isEqualTo(CommonErrorCode.PROTOCOL_EXCEPTION.getCode())
                 .jsonPath("$.error.message").isEqualTo("Method Not Allowed");
+    }
+
+    private WalletControllerV1 controller(WalletLookupService lookupService) {
+        return new WalletControllerV1(lookupService, mapper, mock(WalletMutationService.class),
+                Mappers.getMapper(WalletTopUpResponseMapperV1.class), new WalletTopUpProviders(Map.of()),
+                new WalletTopUpHttpProps(false, null));
     }
 }

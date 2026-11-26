@@ -251,9 +251,10 @@ Top-up reserves a wallet-scoped idempotency key before calling the payment provi
 Only the reservation winner dispatches. An unconfirmed charge goes to review
 instead of being retried; a recorded receipt can be applied locally without
 contacting the provider again. Spending uses a sufficient-funds guard. The
-balance change, operation result, and outbox event commit together. Replays
+balance change, sequenced ledger posting, operation result, and outbox event commit together. Replays
 return the recorded result, not the current wallet balance.
 
+- `WALLET_AUDIT_ENABLED=true` enables the [daily UTC balance auditor and monitoring alert relay](docs/wallet-balance-audit.md). Enroll verified openings and configure snapshot retention before enabling it.
 - `WALLET_RECONCILIATION_ENABLED=true` enables lease-led recovery and stale
   payment review. The job never retries the provider call.
 - `WALLET_OUTBOX_ENABLED=true` enables the relay. Set
@@ -265,15 +266,17 @@ return the recorded result, not the current wallet balance.
   [wallet logging contract](docs/wallet-logging.md) for JSON fields, event levels,
   redaction rules, and how to enable wallet-only debug logging. Alert routing and
   trace export depend on the deployment's observability stack.
+- For Actuator metrics in Grafana and local database browsing, see the
+  [Prometheus, Grafana and Mongo Express Compose guide](docs/local-monitoring.md).
 
 A production write contract is not defined. Production top-up would require
 wallet-owner authorization before both initial dispatch and replay, TLS, and
 an approved payment-data design (such as tokenization). Provider currency and
-amount policy and adoption of a separate immutable ledger remain open.
+amount policy remain open.
 
 ### Worker configuration
 
-Both workers are disabled by default. The wallet's `application.yaml` defines
+The payment reconciliation and balance-event relay workers are disabled by default. The wallet's `application.yaml` defines
 these defaults and binds them to validated `wallet.reconciliation` and
 `wallet.outbox` settings.
 

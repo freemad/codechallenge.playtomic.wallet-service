@@ -18,6 +18,7 @@ import com.playtomic.tests.wallet.services.entity.WalletOperationEntityService;
 import com.playtomic.tests.wallet.services.entity.WalletOutboxEntityService;
 import com.playtomic.tests.wallet.services.entity.WalletPaymentReceiptEntityService;
 import lombok.RequiredArgsConstructor;
+import lombok.Value;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
@@ -45,7 +46,11 @@ public class WalletOperationService {
     private final WalletOutboxEntityService outboxEntityService;
     private final IWalletTransactions walletTransactions;
 
-    private record Transition(WalletOperationModel operation, boolean changed) {
+    @Value
+    private static class Transition {
+        WalletOperationModel operation;
+        boolean changed;
+
         WalletOperationModel report(WalletLogEvent event) {
             if (changed) {
                 event.operation(operation.getId()).addKeyValue("status", operation.getStatus().getName())
@@ -67,15 +72,6 @@ public class WalletOperationService {
     public Mono<Outcome<Optional<WalletOperationModel>, Error>> markPaymentOutcome(String id,
                                                                                    WalletOperationStatus outcome) {
         return WalletOutcome.optional(markPaymentStatus(id, outcome));
-    }
-
-    private Mono<WalletOperationModel> markPaymentStatus(String id, WalletOperationStatus outcome) {
-        if (outcome != WALLET_OPERATION_STATUS_REVIEW_REQUIRED && outcome != WALLET_OPERATION_STATUS_PAYMENT_REJECTED
-                && outcome != WALLET_OPERATION_STATUS_PROVIDER_UNAVAILABLE) {
-            return Mono.error(() -> normalize(new IllegalArgumentException("Invalid payment outcome")));
-        }
-        return Mono.defer(() -> operationEntityService.transitionTopUp(id, outcome, WALLET_OPERATION_STATUS_PENDING))
-                .switchIfEmpty(Mono.defer(() -> operationEntityService.findById(id)));
     }
 
     public Mono<Outcome<Optional<WalletOperationModel>, Error>> recordReceipt(String id, String providerPaymentId) {
@@ -111,6 +107,15 @@ public class WalletOperationService {
                     .map(updated -> new Transition(updated, true));
         }));
         return WalletOutcome.optional(walletTransactions.execute(work).map(change -> change.report(WalletLogEvent.FINALIZED)));
+    }
+
+    private Mono<WalletOperationModel> markPaymentStatus(String id, WalletOperationStatus outcome) {
+        if (outcome != WALLET_OPERATION_STATUS_REVIEW_REQUIRED && outcome != WALLET_OPERATION_STATUS_PAYMENT_REJECTED
+                && outcome != WALLET_OPERATION_STATUS_PROVIDER_UNAVAILABLE) {
+            return Mono.error(() -> normalize(new IllegalArgumentException("Invalid payment outcome")));
+        }
+        return Mono.defer(() -> operationEntityService.transitionTopUp(id, outcome, WALLET_OPERATION_STATUS_PENDING))
+                .switchIfEmpty(Mono.defer(() -> operationEntityService.findById(id)));
     }
 
     private Mono<WalletOperationModel> applyToWallet(WalletOperationModel operation, WalletModel wallet,

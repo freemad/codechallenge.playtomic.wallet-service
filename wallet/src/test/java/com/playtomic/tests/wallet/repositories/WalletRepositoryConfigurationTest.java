@@ -161,21 +161,6 @@ class WalletRepositoryConfigurationTest {
         }
     }
 
-    private <T extends IEntity<String>> Document roundTrip(T entity, Class<T> type) {
-        entity.setNewRecord(true);
-        assertThat(entity.isNew()).isTrue();
-        var bson = new Document();
-        var converter = mongo.getConverter();
-        converter.write(entity, bson);
-        assertThat(bson).containsEntry("_id", entity.getId()).doesNotContainKeys("id", "new", "newRecord");
-        var loaded = converter.read(type, bson);
-        assertThat(loaded).isEqualTo(entity);
-        assertThat(loaded.isNew()).isFalse();
-        var legacy = new Document(bson).append("_class", "com.playtomic.tests.wallet.repository." + type.getSimpleName());
-        assertThat(converter.read(type, legacy)).isEqualTo(entity);
-        return bson;
-    }
-
     @Test
     void discoversAllWalletRepositoriesWithoutConnectingToMongo() {
         assertThat(documents).isNotNull();
@@ -204,5 +189,20 @@ class WalletRepositoryConfigurationTest {
                 .append("token", "lease-token").append("expiresAt", java.util.Date.from(expiry));
         assertThat(mongo.getConverter().read(WalletJobLeaseEntity.class, bson))
                 .isEqualTo(new WalletJobLeaseEntity("payment-reconciliation", "lease-token", expiry));
+    }
+
+    private <T extends IEntity<String>> Document roundTrip(T entity, Class<T> type) {
+        entity.setNewRecord(true);
+        assertThat(entity.isNew()).isTrue();
+        var bson = new Document();
+        var converter = mongo.getConverter();
+        converter.write(entity, bson);
+        assertThat(bson).containsEntry("_id", entity.getId()).doesNotContainKeys("id", "new", "newRecord");
+        var loaded = converter.read(type, bson);
+        assertThat(loaded).isEqualTo(entity);
+        assertThat(loaded.isNew()).isFalse();
+        var legacy = new Document(bson).append("_class", "com.playtomic.tests.wallet.repository." + type.getSimpleName());
+        assertThat(converter.read(type, legacy)).isEqualTo(entity);
+        return bson;
     }
 }

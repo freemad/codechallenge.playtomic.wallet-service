@@ -21,6 +21,10 @@ public class WalletTopUpHttpProps {
         this.syntheticCardNumber = syntheticCardNumber;
     }
 
+    public boolean acceptsCardNumber(String cardNumber) {
+        return APPROVED_SYNTHETIC_CARD_NUMBER.equals(cardNumber) && cardNumber.equals(syntheticCardNumber);
+    }
+
     boolean isEnabled() {
         return enabled;
     }
@@ -30,9 +34,5 @@ public class WalletTopUpHttpProps {
                 "Unauthenticated top-up HTTP requires the " + DEMO_PROFILE + " profile");
         Assert.isTrue(LOOPBACK_ADDRESS.equals(environment.getProperty("server.address")),
                 DEMO_PROFILE + " requires server.address=" + LOOPBACK_ADDRESS);
-    }
-
-    public boolean acceptsCardNumber(String cardNumber) {
-        return APPROVED_SYNTHETIC_CARD_NUMBER.equals(cardNumber) && cardNumber.equals(syntheticCardNumber);
     }
 }
