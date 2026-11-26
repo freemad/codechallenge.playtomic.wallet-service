@@ -2,8 +2,12 @@ package com.playtomic.tests.simulator.controllers;
 
 import com.playtomic.tests.simulator.PaymentSimulatorApplication;
 import com.playtomic.tests.simulator.configs.SimulatorProps;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.web.server.context.WebServerApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.http.HttpStatus;
@@ -27,7 +31,8 @@ class StripeSimulationControllerTest {
             """;
 
     @Test
-    void returnsTheProviderReceiptAndRejectsMissingFields() throws Exception {
+    @ExtendWith(OutputCaptureExtension.class)
+    void returnsTheProviderReceiptAndRejectsMissingFields(CapturedOutput output) throws Exception {
         try (var app = start("SUCCESS"); var client = HttpClient.newHttpClient()) {
             var receipt = charge(app, client, CHARGE);
             assertThat(receipt.statusCode()).isEqualTo(200);
@@ -36,6 +41,14 @@ class StripeSimulationControllerTest {
             assertThat(UUID.fromString(json.path("id").asString()).version()).isEqualTo(7);
             assertThat(charge(app, client, "{\"amount\":15.25}").statusCode()).isEqualTo(400);
             assertThat(charge(app, client, CHARGE.replace("15.25", "0")).statusCode()).isEqualTo(400);
+            var mapper = JsonMapper.builder().build();
+            var events = output.getOut().lines().filter(line -> line.startsWith("{"))
+                    .map(mapper::readTree).filter(node -> "simulator.events".equals(node.path("logger_name").asString(""))).toList();
+            assertThat(events.stream().map(node -> node.path("event").asString())).containsExactly(
+                    "simulation.result", "http.response", "simulation.result", "http.response", "simulation.result", "http.response");
+            assertThat(events.getFirst().path("result").asString()).isEqualTo("receipt_created");
+            assertThat(events.toString()).doesNotContain("4242424242424242", "\"amount\"", json.path("id").asString(), "/v1/stripe-simulator");
+            assertThat(app.getBean(MeterRegistry.class).get("http.server.requests").tag("status", "200").timer().count()).isEqualTo(1);
         }
     }
 
@@ -66,7 +79,7 @@ class StripeSimulationControllerTest {
 
     private static ConfigurableApplicationContext start(String scenario) {
         return new SpringApplicationBuilder(PaymentSimulatorApplication.class)
-                .run("--server.port=0", "--payment-simulator.scenario=" + scenario);
+                .run("--server.port=0", "--logging.level.simulator.events=DEBUG", "--payment-simulator.scenario=" + scenario);
     }
 
     private static HttpResponse<String> charge(ConfigurableApplicationContext app, HttpClient client, String body)

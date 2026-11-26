@@ -19,6 +19,8 @@ import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
 
+import static com.playtomic.tests.simulator.observability.SimulationOutcome.*;
+
 /** Inbound adapter for the local Stripe-compatible charge fixture. */
 @RestController
 @RequiredArgsConstructor
@@ -30,13 +32,12 @@ public class StripeSimulationController {
     public Mono<ResponseEntity<Receipt>> charge(@RequestBody ChargeRequest request) {
         if (request.getCreditCard() == null || request.getCreditCard().isBlank()
                 || request.getAmount() == null || request.getAmount().signum() <= 0) {
-            return Mono.just(ResponseEntity.badRequest().build());
+            return STRIPE_INVALID.observe(Mono.just(ResponseEntity.badRequest().build()));
         }
-
         return switch (properties.getScenario()) {
-            case SUCCESS -> Mono.just(ResponseEntity.ok(new Receipt(UuidV7Generator.generate().toString())));
-            case REJECT -> Mono.just(ResponseEntity.unprocessableContent().build());
-            case TIMEOUT -> SimulationResponses.timeout();
+            case SUCCESS -> RECEIPT_CREATED.observe(Mono.just(ResponseEntity.ok(new Receipt(UuidV7Generator.generate().toString()))));
+            case REJECT -> STRIPE_DECLINED.observe(Mono.just(ResponseEntity.unprocessableContent().build()));
+            case TIMEOUT -> STRIPE_TIMEOUT.observe(SimulationResponses.timeout());
         };
     }
 

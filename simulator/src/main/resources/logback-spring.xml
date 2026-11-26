@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <springProperty name="filePath" source="simulator.log.file" defaultValue="logs/simulator.log"/>
+    <springProperty name="collector" source="simulator.log.elastic.destination" defaultValue="localhost:5044"/>
+    <include resource="logging/service-appenders.xml"/>
+    <logger name="simulator.events" level="INFO"/>
+</configuration>
+
