@@ -24,6 +24,7 @@ import org.springframework.data.mongodb.core.query.*;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.kafka.KafkaContainer;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -31,6 +32,7 @@ import tools.jackson.databind.json.JsonMapper;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -40,7 +42,7 @@ import static org.mockito.Mockito.when;
 
 @SpringBootTest
 @ActiveProfiles("test")
-@Import(WalletOutboxRelayIT.Containers.class)
+@Import(AuditNetworkFixture.class)
 class WalletBalanceAuditIT {
     private static final Duration LIMIT = Duration.ofSeconds(30);
     @Autowired ReactiveMongoTemplate mongo;
@@ -52,6 +54,7 @@ class WalletBalanceAuditIT {
     @Autowired WalletAuditProps props;
     @Autowired JsonMapper json;
     @MockitoBean StripeAdapter stripe;
+    @Autowired GenericContainer<?> auditProxy;
 
     @Test
     void delayedCompetingWorkersCheckTheHistoricalBalanceNotTheLiveBalance() {
@@ -120,6 +123,53 @@ class WalletBalanceAuditIT {
         }
     }
 
+    @Test
+    @ExtendWith(OutputCaptureExtension.class)
+    void mongoOutageRetriesSameCutoffUnderLatencyWithoutFalseDiscrepancy(CapturedOutput output) throws Exception {
+        String id = "audit-network";
+        seed(id);
+        var worker = new WalletBalanceAuditWorker(audit, store, props, producer, json);
+        worker.calculate().block(LIMIT); // Initialize indexes before the due period and the outage.
+        long alertsBefore = mongo.count(new Query(), "wallet_audit_alert_outbox").block(LIMIT);
+        proxyCommand("toxic", "add", "-t", "latency", "-a", "latency=60", "-n", "slow-replies", "mongo");
+        try {
+            var debit = mutations.spend(id, "network-debit", new BigDecimal("3.25"), "EUR");
+            assertThat(debit.block(LIMIT).getError()).isNull();
+            Instant cutoff = closePeriod(id);
+            proxyCommand("toggle", "mongo");
+            try {
+                worker.calculate().block(LIMIT);
+                assertThat(output.getOut()).contains("\"event\":\"audit.run_failed\"");
+            } finally {
+                proxyCommand("toggle", "mongo");
+            }
+            var pending = mongo.findById(id, Document.class, "wallet_audit_schedule").block(LIMIT);
+            assertThat(pending.getDate("nextCutoff").toInstant()).isEqualTo(cutoff);
+            assertThat(wallet(id)).doesNotContainKeys("auditedLedgerSequence", "calculationTimestamp");
+            assertThat(debit.block(LIMIT).getError()).isNull(); // Replay after reconnection.
+            worker.calculate().block(LIMIT);
+            var result = wallet(id);
+            assertThat(money(result, "balance")).isEqualByComparingTo("6.75");
+            assertThat(money(result, "calculatedBalance")).isEqualByComparingTo("6.75");
+            assertThat(result.getLong("ledgerSequence")).isEqualTo(1L);
+            assertThat(result.getLong("auditedLedgerSequence")).isEqualTo(1L);
+            assertThat(result.getDate("cutoffAt").toInstant()).isEqualTo(cutoff);
+            var rows = Query.query(Criteria.where("walletId").is(id));
+            assertThat(mongo.count(rows, "wallet_ledger").block(LIMIT)).isEqualTo(1L);
+            assertThat(mongo.count(rows, "wallet_balance_audit").block(LIMIT)).isZero();
+            assertThat(mongo.count(new Query(), "wallet_audit_alert_outbox").block(LIMIT)).isEqualTo(alertsBefore);
+        } finally {
+            proxyCommand("toxic", "remove", "-n", "slow-replies", "mongo");
+        }
+    }
+
+    private void proxyCommand(String... args) throws Exception {
+        var command = new ArrayList<>(List.of("/toxiproxy-cli"));
+        command.addAll(List.of(args));
+        var result = auditProxy.execInContainer(command.toArray(String[]::new));
+        assertThat(result.getExitCode()).as("Toxiproxy: %s %s", result.getStdout(), result.getStderr()).isZero();
+    }
+
     private void seed(String id) {
         mongo.insert(new Document("_id", id).append("currency", "EUR").append("balance", new Decimal128(10)), "wallets").block(LIMIT);
         store.indexes().block(LIMIT);
@@ -131,7 +181,8 @@ class WalletBalanceAuditIT {
         mongo.insert(new Document("_id", id).append("currency", "EUR").append("openingBalance", new Decimal128(10))
                 .append("openingSequence", 0L).append("nextCutoff", Date.from(cutoff)).append("availableAt", Date.from(cutoff))
                 .append("blocked", false), "wallet_audit_schedule").block(LIMIT);
-        Flux.interval(Duration.ZERO, Duration.ofMillis(50)).concatMap(i -> mongo.executeCommand(new Document("hello", 1)))
+        Mono.defer(() -> mongo.executeCommand(new Document("hello", 1)))
+                .repeatWhen(completed -> completed.delayElements(Duration.ofMillis(50)))
                 .filter(d -> !d.getDate("localTime").toInstant().isBefore(cutoff)).next().block(LIMIT);
         return cutoff;
     }

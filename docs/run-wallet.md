@@ -10,6 +10,7 @@ Run these commands from the repository root with JDK 25 and Maven 3.9+. Docker m
 | Stop the stack, retaining data | `docker compose -f deployment/compose.yaml down` |
 | Run unit tests only | `mvn test` |
 | Run unit and integration tests | `mvn verify -Dwallet.test.mongo.image=mongo:8.3.17-noble` |
+| Run the Toxiproxy balance audit and Kafka alert checks | `mvn -pl wallet -am verify -Dit.test=WalletBalanceAuditIT -Dwallet.test.mongo.image=mongo:8.3.17-noble` |
 | Focus integration coverage on the four double-operation races | `mvn -pl wallet -am verify '-Dit.test=WalletApplicationIT#concurrent*' -Dwallet.test.mongo.image=mongo:8.3.17-noble` |
 | Run the opt-in hot-wallet pressure test | `mvn -pl wallet -am verify '-Dit.test=WalletApplicationIT#pressureConcurrentSpendsOnOneWallet' -Dwallet.pressure=true -Dwallet.test.mongo.image=mongo:8.3.17-noble` |
 
@@ -18,3 +19,5 @@ Run these commands from the repository root with JDK 25 and Maven 3.9+. Docker m
 **What the focused tests prove:** Same-key top-ups charge and credit once; different keys credit both amounts. Same-key spends debit once even when both are affordable; two different keys competing for the last funds cannot overdraw. These tests exercise the mutation service against real MongoDB and mock the payment adapter; spend has no HTTP endpoint.
 
 **Pressure test:** Forty distinct €1 spends compete for €20 in one wallet, up to four in flight. The test requires 20 successes, 20 insufficient-funds results, a zero stored balance, and exactly 20 ledger postings and debit events. This is a bounded correctness check, not a throughput benchmark. Normal `verify` skips it. The focused commands still run unit tests; `it.test` narrows the Failsafe integration phase only.
+
+**Network faults and audit alerts:** The audit suite routes MongoDB traffic through a disposable `ghcr.io/shopify/toxiproxy:2.12.0`. With 60 ms downstream latency, a €3.25 debit from €10 leaves €6.75. Cutting the connection before the audit must leave the cutoff pending; after reconnection, replay must leave one posting and the audit must confirm €6.75 without queuing an alert. A separate deliberately corrupted wallet (€11 stored vs €9 calculated) must produce a redacted discrepancy log, one `wallet_balance_audit` document, and a Kafka alert linked by event ID. The test consumes that alert from `wallet.audit.alerts.v1`; delivery to a downstream pager or dashboard is outside this check.
