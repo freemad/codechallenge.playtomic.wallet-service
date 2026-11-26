@@ -10,12 +10,15 @@ import java.time.Duration;
 @ConfigurationProperties("wallet.audit")
 public class WalletAuditProps {
     String topic;
+    Duration interval;
     Duration lease;
     Duration timeout;
     int batchSize;
 
     /** Binds the settings for wallet audit. */
-    public WalletAuditProps(String topic, Duration lease, Duration timeout, int batchSize) {
+    public WalletAuditProps(String topic, Duration interval, Duration lease, Duration timeout, int batchSize) {
+        Assert.isTrue(interval != null && interval.isPositive(), "wallet.audit.interval must be positive");
+        this.interval = interval;
         Assert.hasText(topic, "wallet.audit.topic must not be blank");
         Assert.isTrue(timeout != null && timeout.isPositive() && lease != null && lease.compareTo(timeout) > 0,
                 "wallet.audit.lease must exceed positive timeout");

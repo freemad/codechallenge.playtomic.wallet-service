@@ -107,6 +107,24 @@ class WalletReconciliationJobTest {
     }
 
     @Test
+    void appliesReceiptsDespiteAFailedOrStalledPendingRow() {
+        var pending = mock(WalletOperationModel.class);
+        var receipt = mock(WalletOperationModel.class);
+        when(pending.getId()).thenReturn("pending");
+        when(receipt.getId()).thenReturn("receipt");
+        when(leases.acquire(JOB, SETTINGS.getLease())).thenReturn(Mono.just("lease"));
+        when(leases.release(JOB, "lease")).thenReturn(Mono.empty());
+        when(operations.ensureReconciliationIndex()).thenReturn(Mono.just("index"));
+        when(operations.reconciliationBatch(eq(WALLET_OPERATION_STATUS_PENDING), any(), anyInt())).thenReturn(Flux.just(pending));
+        when(operations.reconciliationBatch(eq(WALLET_OPERATION_STATUS_RECEIPT_RECORDED), any(), anyInt())).thenReturn(Flux.just(receipt));
+        when(paymentCommands.markPaymentOutcome(eq("pending"), any())).thenReturn(Mono.error(new IllegalStateException("failed")), Mono.never());
+        when(paymentCommands.apply("receipt")).thenReturn(Mono.just(com.playtomic.tests.common.models.Outcome.success(java.util.Optional.of(receipt))));
+        StepVerifier.create(job.reconcile()).expectComplete().verify(DEADLINE);
+        StepVerifier.create(job.reconcile()).then(() -> verify(paymentCommands, org.mockito.Mockito.times(2)).apply("receipt"))
+                .thenCancel().verify(DEADLINE);
+    }
+
+    @Test
     void usesConfiguredLeaseBatchLimitAndCutoffs() {
         String token = "lease-token";
         when(leases.acquire(JOB, SETTINGS.getLease())).thenReturn(Mono.just(token));

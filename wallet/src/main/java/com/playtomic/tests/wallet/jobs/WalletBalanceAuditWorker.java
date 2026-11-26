@@ -53,10 +53,12 @@ public class WalletBalanceAuditWorker {
     @Scheduled(fixedDelayString = "${wallet.audit.interval}")
     public Mono<Void> publish() {
         return batch(() -> store.claimAlert(Instant.now(), props.getLease()).flatMap(row -> {
-            String id = row.getString("_id");
+            String id = row.id();
             String payload = json.writeValueAsString(Map.of("eventId", id, "eventType", "WalletBalanceDiscrepancy", "schemaVersion", 1));
             return Mono.fromFuture(() -> kafka.send(props.getTopic(), id, payload), true).subscribeOn(Schedulers.boundedElastic())
-                    .then(Mono.defer(() -> store.acknowledge(row))).thenReturn(true);
+                    .then(Mono.defer(() -> store.acknowledge(row))).doOnNext(owned -> {
+                        if (!owned) WalletLogEvent.AUDIT_ALERT_FAILED.fields().addKeyValue("reason", "lost_lease").log();
+                    });
         }).defaultIfEmpty(false), WalletLogEvent.AUDIT_ALERT_FAILED);
     }
 
@@ -64,6 +66,7 @@ public class WalletBalanceAuditWorker {
         return ready.thenMany(Flux.range(0, props.getBatchSize()).concatMap(i -> Mono.defer(work).timeout(props.getTimeout()))
                         .takeUntil(done -> !done)).then().onErrorMap(ExceptionNormalizer::normalize)
                 .onErrorResume(BusinessException.class, e -> {
+                    if (ExceptionNormalizer.mustPropagate(e)) return Mono.error(e);
                     failed.fields().addKeyValue("errorCode", e.getErrorCode().getCode()).log();
                     return Mono.empty();
                 });

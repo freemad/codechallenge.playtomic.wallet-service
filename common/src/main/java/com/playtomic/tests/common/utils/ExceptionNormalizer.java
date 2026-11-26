@@ -53,7 +53,7 @@ public final class ExceptionNormalizer {
      * @return business exception, or the unchanged business, transport or control-flow exception
      */
     public static Exception normalize(Exception error, CommonErrorCode fallbackCode, String context) {
-        if (error instanceof BusinessException || isControlFlow(error) || isFatal(error)
+        if (error instanceof BusinessException || mustPropagate(error)
                 || error instanceof ErrorResponseException || error instanceof WebClientResponseException
                 || error instanceof AuthenticationException || error instanceof AccessDeniedException) {
             return error;
@@ -85,6 +85,11 @@ public final class ExceptionNormalizer {
     /** Identifies JVM errors and Reactor fatal signals, including wrapped causes. */
     public static boolean isFatal(Throwable error) {
         return hasCause(error, cause -> cause instanceof Error || Exceptions.isFatal(cause));
+    }
+
+    /** Returns true for cancellation, interruption or fatal signals anywhere in the cause chain. */
+    public static boolean mustPropagate(Throwable error) {
+        return isControlFlow(error) || isFatal(error);
     }
 
     private static boolean hasCause(Throwable error, Predicate<Throwable> matches) {

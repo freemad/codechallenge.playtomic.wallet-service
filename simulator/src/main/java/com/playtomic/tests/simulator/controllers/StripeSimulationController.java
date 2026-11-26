@@ -1,6 +1,7 @@
 package com.playtomic.tests.simulator.controllers;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.playtomic.tests.common.contracts.StripeSimulatorMoney;
 import com.playtomic.tests.common.utils.UuidV7Generator;
 import com.playtomic.tests.simulator.configs.SimulatorProps;
 import com.playtomic.tests.simulator.models.SimulationResponses;
@@ -32,7 +33,7 @@ public class StripeSimulationController {
     @PostMapping(path = "/v1/stripe-simulator/charges", consumes = MediaType.APPLICATION_JSON_VALUE)
     public Mono<ResponseEntity<Receipt>> charge(@RequestBody ChargeRequest request) {
         if (request.getCreditCard() == null || request.getCreditCard().isBlank()
-                || request.getAmount() == null || request.getAmount().signum() <= 0) {
+                || !StripeSimulatorMoney.accepts(request.getAmount())) {
             return STRIPE_INVALID.observe(Mono.just(ResponseEntity.badRequest().build()));
         }
         return switch (properties.getScenario()) {

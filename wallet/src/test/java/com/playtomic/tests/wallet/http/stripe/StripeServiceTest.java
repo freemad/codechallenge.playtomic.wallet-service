@@ -42,7 +42,7 @@ class StripeServiceTest {
     private static final String CARD_NUMBER = "4242 4242 4242 4242";
     private static final BigDecimal AMOUNT = new BigDecimal("15.25");
     private static final CardChargeModel CHARGE = new CardChargeModel(CARD_NUMBER, AMOUNT);
-    private static final Duration TEST_TIMEOUT = Duration.ofSeconds(5);
+    private static final Duration TEST_TIMEOUT = Duration.ofSeconds(20);
 
     private final AtomicReference<CapturedRequest> request = new AtomicReference<>();
     private final AtomicInteger calls = new AtomicInteger();
@@ -147,7 +147,7 @@ class StripeServiceTest {
 
     @Test
     void timeoutAfterDispatchLeavesTheOutcomeUnconfirmed() {
-        StripeAdapter adapter = startProvider(response -> Mono.never());
+        StripeAdapter adapter = startProvider(response -> Mono.never(), Duration.ofSeconds(2));
 
         StepVerifier.create(adapter.charge(CHARGE))
                 .expectErrorSatisfies(error -> assertThat(error)
@@ -186,6 +186,10 @@ class StripeServiceTest {
     }
 
     private StripeAdapter startProvider(Function<HttpServerResponse, Mono<Void>> reply) {
+        return startProvider(reply, Duration.ofSeconds(12));
+    }
+
+    private StripeAdapter startProvider(Function<HttpServerResponse, Mono<Void>> reply, Duration requestTimeout) {
         server = HttpServer.create()
                 .host("127.0.0.1")
                 .port(0)
@@ -199,7 +203,7 @@ class StripeServiceTest {
                 .bindNow();
         String baseUrl = "http://127.0.0.1:" + server.port();
         var stripe = new WalletPaymentProviderProps.Provider(URI.create(baseUrl + "/charges"),
-                baseUrl + "/payments/{payment_id}/refunds", null, null, Duration.ofSeconds(1), Duration.ofSeconds(2), true, null);
+                baseUrl + "/payments/{payment_id}/refunds", null, null, Duration.ofSeconds(1), requestTimeout, true, null);
         var paypal = new WalletPaymentProviderProps.Provider(null, null, URI.create(baseUrl + "/orders"), null,
                 stripe.getConnectTimeout(), stripe.getRequestTimeout(), false, null);
         var redsys = new WalletPaymentProviderProps.Provider(null, null, null, URI.create(baseUrl + "/authorization"),

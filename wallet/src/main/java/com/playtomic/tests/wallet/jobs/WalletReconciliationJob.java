@@ -58,8 +58,8 @@ public class WalletReconciliationJob {
 
     private Mono<Void> reconcileBatch() {
         Instant now = Instant.now();
-        return operationEntities.reconciliationBatch(WALLET_OPERATION_STATUS_PENDING,
-                        now.minus(properties.getStalePendingAge()), properties.getBatchSize())
+        var pending = Flux.defer(() -> operationEntities.reconciliationBatch(WALLET_OPERATION_STATUS_PENDING,
+                        now.minus(properties.getStalePendingAge()), properties.getBatchSize()))
                 .concatMap(operation -> operations.markPaymentOutcome(operation.getId(), WALLET_OPERATION_STATUS_REVIEW_REQUIRED)
                         .flatMap(WalletOutcome::optionalValue)
                         .doOnNext(result -> {
@@ -67,15 +67,23 @@ public class WalletReconciliationJob {
                                 REVIEW.operation(result.getId()).log();
                             }
                         }))
-                .thenMany(Flux.defer(() -> operationEntities.reconciliationBatch(
-                        WALLET_OPERATION_STATUS_RECEIPT_RECORDED, now.minus(properties.getReceiptDelay()), properties.getBatchSize())))
+                .then().onErrorMap(ExceptionNormalizer::normalize)
+                .onErrorResume(BusinessException.class, error -> {
+                    if (ExceptionNormalizer.mustPropagate(error)) return Mono.error(error);
+                    RECONCILIATION_FAILED.fields().addKeyValue("batch", "pending").log();
+                    return Mono.empty();
+                });
+        var receipts = Flux.defer(() -> operationEntities.reconciliationBatch(
+                        WALLET_OPERATION_STATUS_RECEIPT_RECORDED, now.minus(properties.getReceiptDelay()), properties.getBatchSize()))
                 .concatMap(operation -> Mono.defer(() -> operations.apply(operation.getId()))
                         .flatMap(WalletOutcome::optionalValue).then()
                         .onErrorMap(ExceptionNormalizer::normalize)
                         .onErrorResume(BusinessException.class, error -> {
+                            if (ExceptionNormalizer.mustPropagate(error)) return Mono.error(error);
                             RECOVERY_FAILED.operation(operation.getId()).addKeyValue("errorCode", error.getErrorCode().getCode()).log();
                             return operationEntities.deferReceiptRecovery(operation);
                         }))
                 .then();
+        return Mono.when(receipts, pending);
     }
 }
