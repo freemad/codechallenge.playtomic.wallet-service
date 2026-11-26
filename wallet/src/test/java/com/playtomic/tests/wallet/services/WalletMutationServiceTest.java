@@ -23,6 +23,7 @@ import reactor.test.StepVerifier;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CancellationException;
 
@@ -47,10 +48,11 @@ class WalletMutationServiceTest {
 
     private final WalletOperationService operations = mock(WalletOperationService.class);
     private final StripeAdapter stripe = mock(StripeAdapter.class);
+    private final WalletTopUpProviders providers = new WalletTopUpProviders(Map.of("stripe", stripe::charge));
     private final WalletMutationMetrics metrics = mock(WalletMutationMetrics.class);
     private final WalletOutcomeHandler outcomeHandler = new WalletOutcomeHandler();
     private final WalletMutationService service = new WalletMutationService(mock(WalletLookupService.class), operations,
-            stripe, mock(ReactiveCircuitBreaker.class), metrics, outcomeHandler);
+            mock(ReactiveCircuitBreaker.class), metrics, outcomeHandler, providers);
 
     @ParameterizedTest
     @CsvSource({
@@ -118,7 +120,7 @@ class WalletMutationServiceTest {
     void freshTopUpRedactsWalletLookupFailureBeforeReservationOrCharge() {
         var walletEntities = mock(WalletEntityService.class);
         var mutation = new WalletMutationService(new WalletLookupService(walletEntities, outcomeHandler), operations,
-                stripe, mock(ReactiveCircuitBreaker.class), metrics, outcomeHandler);
+                mock(ReactiveCircuitBreaker.class), metrics, outcomeHandler, providers);
         var failure = new DataAccessResourceFailureException("internal wallet lookup diagnostics");
         var code = CommonErrorCode.DATA_RETRIEVE_EXCEPTION;
         when(metrics.mutation(any(), any())).thenAnswer(invocation -> invocation.getArgument(1));
@@ -137,6 +139,19 @@ class WalletMutationServiceTest {
         verifyNoInteractions(stripe);
     }
 
+    @Test
+    void changingProviderOnReplayConflictsWithoutDispatch() {
+        when(metrics.mutation(any(), any())).thenAnswer(invocation -> invocation.getArgument(1));
+        when(operations.find(anyString())).thenReturn(WalletOutcome.optional(Mono.just(operation(
+                WALLET_OPERATION_TYPE_TOP_UP, WALLET_OPERATION_STATUS_PENDING, null))));
+
+        StepVerifier.create(service.topUp(WALLET_ID, "key", AMOUNT, CURRENCY, "paypal", "unused"))
+                .assertNext(outcome -> assertThat(outcome.getError().getCode()).isEqualTo(WalletErrorCode.IDEMPOTENCY_CONFLICT))
+                .expectComplete().verify(DEADLINE);
+        verify(operations, never()).reserve(any());
+        verifyNoInteractions(stripe);
+    }
+
     private Mono<Outcome<WalletOperationModel, Error>> replay(WalletOperationType type,
             Mono<Outcome<Optional<WalletOperationModel>, Error>> applied) {
         var status = type == WALLET_OPERATION_TYPE_TOP_UP ? WALLET_OPERATION_STATUS_RECEIPT_RECORDED : WALLET_OPERATION_STATUS_PENDING;
@@ -148,6 +163,7 @@ class WalletMutationServiceTest {
     }
 
     private static WalletOperationModel operation(WalletOperationType type, WalletOperationStatus status, BigDecimal balance) {
-        return new WalletOperationModel(OPERATION_ID, WALLET_ID, type, AMOUNT, CURRENCY, status, balance, Instant.EPOCH);
+        return new WalletOperationModel(OPERATION_ID, WALLET_ID, type, AMOUNT, CURRENCY, status, balance, Instant.EPOCH,
+                type == WALLET_OPERATION_TYPE_TOP_UP ? "stripe" : null);
     }
 }

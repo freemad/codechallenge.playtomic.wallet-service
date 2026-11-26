@@ -48,8 +48,8 @@ class WalletEntityMapperTest {
         var status = WalletOperationStatus.WALLET_OPERATION_STATUS_PENDING;
         assertRoundTrip(Mappers.getMapper(WalletOperationEntityMapper.class),
                 new WalletOperationEntity("op", "wallet", WalletOperationEntity.Type.TOP_UP, amount, "EUR",
-                        WalletOperationEntity.Status.PENDING, null, time),
-                new WalletOperationModel("op", "wallet", type, amount, "EUR", status, null, time));
+                        WalletOperationEntity.Status.PENDING, null, time, "stripe"),
+                new WalletOperationModel("op", "wallet", type, amount, "EUR", status, null, time, "stripe"));
     }
 
     @Test

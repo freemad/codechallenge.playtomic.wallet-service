@@ -1,7 +1,9 @@
 package com.playtomic.tests.wallet.services.entity;
 
+import com.playtomic.tests.common.exceptions.BusinessException;
 import com.playtomic.tests.wallet.contracts.IWalletEntityService;
 import com.playtomic.tests.wallet.entities.WalletOperationEntity;
+import com.playtomic.tests.wallet.enums.WalletErrorCode;
 import com.playtomic.tests.wallet.enums.WalletOperationStatus;
 import com.playtomic.tests.wallet.mappers.WalletOperationEntityMapper;
 import com.playtomic.tests.wallet.models.WalletOperationModel;
@@ -38,7 +40,12 @@ public class WalletOperationEntityService implements IWalletEntityService<Wallet
 
     public Mono<WalletOperationModel> insertIfAbsent(WalletOperationModel request) {
         return Mono.defer(() -> {
-            new Decimal128(request.getAmount()); // Reject values that the storage format would round.
+            try {
+                new Decimal128(request.getAmount()); // Reject values that the storage format would round.
+            } catch (NumberFormatException cause) {
+                return Mono.error(new BusinessException(WalletErrorCode.INVALID_REQUEST,
+                        "Amount must be exactly representable as Decimal128", cause));
+            }
             return getMonoEntityConverter().apply(request).flatMap(repository::insert)
                     .switchIfEmpty(Mono.error(() -> normalize(new IllegalStateException("Wallet operation was not inserted"))));
         }).onErrorResume(DuplicateKeyException.class, ignored -> Mono.empty()).flatMap(this::mapOperation);

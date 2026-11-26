@@ -46,10 +46,13 @@ public final class WalletPaymentProviderProps {
         private final URI authorizationUri;
         private final Duration connectTimeout;
         private final Duration requestTimeout;
+        private final boolean topUpEnabled;
+        private final URI localTopUpAllowedChargeUri;
 
         public Provider(URI chargesUri, String refundsUri, URI ordersUri, URI authorizationUri,
                         @DefaultValue("2s") Duration connectTimeout,
-                        @DefaultValue("5s") Duration requestTimeout) {
+                        @DefaultValue("5s") Duration requestTimeout,
+                        @DefaultValue("true") boolean topUpEnabled, URI localTopUpAllowedChargeUri) {
             Assert.isTrue(connectTimeout.compareTo(Duration.ofMillis(1)) >= 0
                             && connectTimeout.compareTo(Duration.ofMillis(Integer.MAX_VALUE)) <= 0,
                     "connect-timeout must fit in a positive integer number of milliseconds");
@@ -60,6 +63,8 @@ public final class WalletPaymentProviderProps {
             this.authorizationUri = authorizationUri;
             this.connectTimeout = connectTimeout;
             this.requestTimeout = requestTimeout;
+            this.topUpEnabled = topUpEnabled;
+            this.localTopUpAllowedChargeUri = localTopUpAllowedChargeUri;
         }
     }
 
@@ -74,4 +79,3 @@ public final class WalletPaymentProviderProps {
                 "wallet.payment-providers." + property + " must be an HTTP(S) endpoint without credentials, query or fragment");
     }
 }
-

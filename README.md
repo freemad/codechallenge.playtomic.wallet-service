@@ -38,14 +38,75 @@ reactor. After packaging, run
 `java -jar wallet/target/exercise-wallet-0.0.3.jar` with `SPRING_MONGODB_URI`
 pointing to a writable MongoDB replica set.
 
-- `GET /{id}` returns a `ResponseDtoV1` envelope, with the wallet under
+- `GET /api/v1/wallets/{id}` returns a `ResponseDtoV1` envelope, with the wallet under
   `result` on success and an `error` on lookup failure. The HTTP status is
   `200`, `400`, `404`, or `500` as appropriate. For example, a wallet with ID
-  `wallet-123` is looked up at `GET /wallet-123`.
-- `GET /log` is the smoke endpoint. Neither `/wallets/{id}` nor
-  `/api/v1/wallets/{id}` is currently mapped.
+  `wallet-123` is looked up at `GET /api/v1/wallets/wallet-123`.
+- `GET /api/v1/wallets/log` is the smoke endpoint. The previous unversioned URLs
+  are not mapped. The `log` and `payment-providers` segments are reserved and
+  are not wallet lookup IDs on this API.
 
-Write operations are currently internal service methods.
+Spend and other writes remain internal; top-up is HTTP-accessible only in the
+opt-in local demo below.
+
+## Try a local top-up
+
+`POST /api/v1/wallets/{id}/top-ups` is disabled by default, including in the default
+Compose stack. For this demo, run both Java services on the same host. Start
+[the local payment simulator](#local-payment-simulator) and use a disposable,
+writable MongoDB replica set reachable from the host. The unmodified Compose
+stack does not publish MongoDB or the simulator to the host.
+
+Set `SPRING_MONGODB_URI` to the disposable replica set (the profile defaults to
+`mongodb://localhost:27017/playtomic?directConnection=true&replicaSet=wallet-rs&w=majority`).
+On a fresh disposable database, seed a wallet and start the wallet JAR:
+
+```sh
+mongosh "$SPRING_MONGODB_URI" --eval 'db.wallets.insertOne({_id:"wallet-demo", balance:NumberDecimal("10.00"), currency:"EUR"})'
+java -jar wallet/target/exercise-wallet-0.0.3.jar --spring.profiles.active=local-top-up
+```
+
+`WalletControllerV1` declares both demo routes. They are registered only when
+`wallet.top-up.http.enabled` is `true`. It defaults to `false`; the `local-top-up`
+profile enables it and sets `server.address` to `127.0.0.1`. Startup rejects an
+attempt to enable it outside that profile or on another listener address.
+The profile supplies `wallet.top-up.http.synthetic-card-number`, which must be
+the documented synthetic card. Stripe charges must use the approved loopback
+endpoint. Do not expose this profile through a proxy or use real card data.
+This demo has no wallet-owner authorization.
+
+```sh
+curl -i http://127.0.0.1:8090/api/v1/wallets/payment-providers
+```
+
+Choose an ID from `result.providers`. This list contains enabled providers
+wired into the wallet's top-up flow; it does not probe provider health.
+Currently only `stripe` can appear. To disable it, set
+`WALLET_PAYMENT_PROVIDERS_STRIPE_TOP_UP_ENABLED=false`.
+
+```sh
+curl -i http://127.0.0.1:8090/api/v1/wallets/wallet-demo/top-ups \
+  -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: wallet-demo-top-up-1' \
+  --data '{"amount":5.25,"currency":"EUR","provider":"stripe","creditCardNumber":"4242424242424242"}'
+```
+
+Supply exactly one nonblank `Idempotency-Key`, a positive amount exactly
+representable as Decimal128, the wallet's stored currency, and a provider ID.
+Inspect `result.status`, not just the HTTP status or envelope `success` flag:
+
+| HTTP status | Meaning |
+| --- | --- |
+| `200` | Recorded result: `succeeded`, `payment_rejected`, or `provider_unavailable`. Only `succeeded` includes `resultingBalance`. |
+| `202` | Unresolved: `pending`, `receipt_recorded`, or `review_required`. This does not confirm credit. |
+| `400` / `404` | Invalid request (including currency mismatch or a provider not enabled for a new top-up) / wallet not found. |
+| `409` | The same wallet/key already identifies a different amount, currency, operation type, or provider. |
+| `500` | Unexpected failure; internal details are not returned. |
+
+If the response is lost or ambiguous, replay the same request with the same
+key. The replay returns the recorded operation state, not the current wallet
+balance, and does not dispatch a second charge. Do not use a new key to retry an
+uncertain payment.
 
 ## Run with Docker Compose
 
@@ -53,14 +114,14 @@ From the repository root:
 
 ```sh
 docker compose -f deployment/compose.yaml up --build -d
-curl --fail --retry 12 --retry-delay 3 --retry-all-errors http://127.0.0.1:8090/log
+curl --fail --retry 12 --retry-delay 3 --retry-all-errors http://127.0.0.1:8090/api/v1/wallets/log
 docker compose -f deployment/compose.yaml down
 ```
 
 Compose builds separate `wallet` and `simulator` images and runs them as
 separate services alongside the MongoDB replica set. The wallet defaults to
 `http://simulator:9999` for all payment provider endpoints on the Compose
-network. The simulator port is not published to the host. `/log` checks the
+network. The simulator port is not published to the host. `/api/v1/wallets/log` checks the
 wallet HTTP endpoint; it does not send a payment. Set
 `PAYMENT_SIMULATOR_SCENARIO=REJECT` or `TIMEOUT` before starting Compose to use a
 different fixture scenario. Use synthetic payment data only.
@@ -108,7 +169,7 @@ precedence.
 
 `PayPalAdapter` creates and captures EUR orders. `RedsysAdapter` uses the unsigned
 EUR authorization test protocol, not the production Redsys protocol. Neither
-fixture is used for wallet top-ups. No new routes or refund workflows are exposed.
+fixture is used for wallet top-ups. No refund workflows are exposed.
 
 Compose uses the service DNS name by default. For other container deployments,
 set the endpoint overrides to addresses reachable from the wallet container.
@@ -204,8 +265,10 @@ return the recorded result, not the current wallet balance.
   sanitized failures and stale payments that need review. Alert routing and
   trace export depend on the deployment's observability stack.
 
-The public write contract, provider currency and amount policy, and any
-separate immutable ledger are not defined by these internal methods.
+A production write contract is not defined. Production top-up would require
+wallet-owner authorization before both initial dispatch and replay, TLS, and
+an approved payment-data design (such as tokenization). Provider currency and
+amount policy and adoption of a separate immutable ledger remain open.
 
 ### Worker configuration
 

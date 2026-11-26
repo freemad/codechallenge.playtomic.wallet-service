@@ -98,7 +98,7 @@ class WalletRepositoryConfigurationTest {
         var amount = new BigDecimal("0.02");
         var balance = new BigDecimal("9007199254740993.01");
         var operation = new WalletOperationEntity(id, "wallet", WalletOperationEntity.Type.TOP_UP, amount,
-                "EUR", WalletOperationEntity.Status.SUCCEEDED, balance, time);
+                "EUR", WalletOperationEntity.Status.SUCCEEDED, balance, time, "stripe");
         var receipt = new WalletPaymentReceiptEntity("payment-id", id, time);
         var outbox = new WalletOutboxEntity(id, "wallet", "WalletCredited", 1, amount,
                 "EUR", balance, time, time, null, null);
@@ -106,6 +106,7 @@ class WalletRepositoryConfigurationTest {
         assertThat(roundTrip(operation, WalletOperationEntity.class))
                 .containsEntry("type", "TOP_UP")
                 .containsEntry("status", "SUCCEEDED")
+                .containsEntry("provider", "stripe")
                 .containsEntry("amount", new Decimal128(amount))
                 .containsEntry("resultingBalance", new Decimal128(balance));
         assertThat(roundTrip(receipt, WalletPaymentReceiptEntity.class))

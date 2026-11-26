@@ -11,7 +11,6 @@ import com.playtomic.tests.wallet.models.CardChargeModel;
 import com.playtomic.tests.wallet.models.WalletOperationModel;
 import com.playtomic.tests.wallet.models.WalletOutcome;
 import com.playtomic.tests.wallet.observability.WalletMutationMetrics;
-import com.playtomic.tests.wallet.services.adapter.StripeAdapter;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -25,6 +24,7 @@ import java.time.Instant;
 import java.util.HexFormat;
 import java.util.function.Function;
 
+import static com.playtomic.tests.wallet.configs.WalletPaymentProviderProps.STRIPE;
 import static com.playtomic.tests.wallet.enums.WalletOperationStatus.*;
 import static com.playtomic.tests.wallet.enums.WalletOperationType.WALLET_OPERATION_TYPE_SPEND;
 import static com.playtomic.tests.wallet.enums.WalletOperationType.WALLET_OPERATION_TYPE_TOP_UP;
@@ -38,18 +38,26 @@ public class WalletMutationService {
 
     private final WalletLookupService lookupService;
     private final WalletOperationService operationService;
-    private final StripeAdapter stripe;
     private final ReactiveCircuitBreaker walletPaymentCircuitBreaker;
     private final WalletMutationMetrics metrics;
     private final WalletOutcomeHandler outcomeHandler;
+    private final WalletTopUpProviders paymentProviders;
 
     public Mono<Outcome<WalletOperationModel, Error>> topUp(String walletId, String key, BigDecimal amount,
                                                              String currency, String creditCardNumber) {
+        return topUp(walletId, key, amount, currency, STRIPE, creditCardNumber);
+    }
+
+    public Mono<Outcome<WalletOperationModel, Error>> topUp(String walletId, String key, BigDecimal amount,
+                                                             String currency, String provider, String creditCardNumber) {
         return outcomeHandler.mutation(metrics.mutation(WALLET_OPERATION_TYPE_TOP_UP, Mono.defer(() -> {
             if (creditCardNumber == null || creditCardNumber.isBlank()) {
                 return Mono.error(invalid("Credit card number is required"));
             }
-            return execute(request(walletId, key, amount, currency, WALLET_OPERATION_TYPE_TOP_UP),
+            if (provider == null || provider.isBlank()) {
+                return Mono.error(invalid("Payment provider is required"));
+            }
+            return execute(request(walletId, key, amount, currency, WALLET_OPERATION_TYPE_TOP_UP, provider),
                     reserved -> charge(reserved, creditCardNumber));
         })));
     }
@@ -57,7 +65,7 @@ public class WalletMutationService {
     public Mono<Outcome<WalletOperationModel, Error>> spend(String walletId, String key, BigDecimal amount,
                                                              String currency) {
         return outcomeHandler.mutation(metrics.mutation(WALLET_OPERATION_TYPE_SPEND, Mono.defer(() ->
-                execute(request(walletId, key, amount, currency, WALLET_OPERATION_TYPE_SPEND), reserved -> apply(reserved.getId())))));
+                execute(request(walletId, key, amount, currency, WALLET_OPERATION_TYPE_SPEND, null), reserved -> apply(reserved.getId())))));
     }
 
     private Mono<WalletOperationModel> execute(WalletOperationModel request,
@@ -65,19 +73,23 @@ public class WalletMutationService {
         String id = request.getId();
         return operationService.find(id).flatMap(WalletOutcome::optionalValue)
                 .flatMap(existing -> replay(existing, request))
-                .switchIfEmpty(Mono.defer(() -> lookupService.findById(request.getWalletId())
-                        .flatMap(WalletOutcome::value).flatMap(wallet -> {
-                    if (!wallet.getCurrency().equals(request.getCurrency())) {
-                        return Mono.error(new WalletMutationException(CURRENCY_MISMATCH,
-                                "Operation currency must match the wallet"));
+                .switchIfEmpty(Mono.defer(() -> {
+                    if (request.getType() == WALLET_OPERATION_TYPE_TOP_UP && !paymentProviders.isActive(request.getProvider())) {
+                        return Mono.error(invalid("Payment provider is not active for top-ups"));
                     }
-                    return operationService.reserve(request).flatMap(WalletOutcome::optionalValue).flatMap(onReserved)
-                            .switchIfEmpty(Mono.defer(() -> operationService.find(id)
-                                    .flatMap(WalletOutcome::optionalValue)
-                                    .switchIfEmpty(Mono.error(() -> new IllegalStateException(
-                                            "Reservation lost but the winner is not yet visible")))
-                                    .flatMap(existing -> replay(existing, request))));
-                })));
+                    return lookupService.findById(request.getWalletId()).flatMap(WalletOutcome::value).flatMap(wallet -> {
+                        if (!wallet.getCurrency().equals(request.getCurrency())) {
+                            return Mono.error(new WalletMutationException(CURRENCY_MISMATCH,
+                                    "Operation currency must match the wallet"));
+                        }
+                        return operationService.reserve(request).flatMap(WalletOutcome::optionalValue).flatMap(onReserved)
+                                .switchIfEmpty(Mono.defer(() -> operationService.find(id)
+                                        .flatMap(WalletOutcome::optionalValue)
+                                        .switchIfEmpty(Mono.error(() -> new IllegalStateException(
+                                                "Reservation lost but the winner is not yet visible")))
+                                        .flatMap(existing -> replay(existing, request))));
+                    });
+                }));
     }
 
     private Mono<WalletOperationModel> replay(WalletOperationModel existing, WalletOperationModel request) {
@@ -96,7 +108,7 @@ public class WalletMutationService {
         String id = operation.getId();
         // Only errors from this provider call are classified as payment outcomes. DB errors propagate.
         return walletPaymentCircuitBreaker.protect(metrics.charge(Mono.defer(() ->
-                        stripe.charge(new CardChargeModel(card, operation.getAmount())))))
+                        paymentProviders.charge(operation.getProvider(), new CardChargeModel(card, operation.getAmount())))))
                 .materialize().flatMap(signal -> {
                     if (signal.isOnNext()) {
                         return operationService.recordReceipt(id, signal.get().getId()).flatMap(WalletOutcome::optionalValue)
@@ -126,7 +138,7 @@ public class WalletMutationService {
     }
 
     private static WalletOperationModel request(String walletId, String key, BigDecimal amount, String currency,
-                                                WalletOperationType type) {
+                                                WalletOperationType type, String provider) {
         var utf8 = StandardCharsets.UTF_8.newEncoder();
         if (walletId == null || walletId.isBlank() || !utf8.canEncode(walletId)
                 || key == null || key.isBlank() || !utf8.canEncode(key)
@@ -134,7 +146,7 @@ public class WalletMutationService {
             throw invalid("Wallet ID, idempotency key, currency and positive amount are required");
         }
         return new WalletOperationModel(operationId(walletId, key), walletId, type, amount, currency,
-                WALLET_OPERATION_STATUS_PENDING, null, Instant.now());
+                WALLET_OPERATION_STATUS_PENDING, null, Instant.now(), provider);
     }
 
     private static String operationId(String walletId, String key) {

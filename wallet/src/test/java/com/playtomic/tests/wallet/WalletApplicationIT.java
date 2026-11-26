@@ -35,6 +35,7 @@ import org.springframework.data.mongodb.core.ReactiveMongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.reactive.server.WebTestClient;
@@ -52,14 +53,15 @@ import java.util.Date;
 import java.util.Optional;
 import java.util.UUID;
 
+import static com.playtomic.tests.common.constants.HttpParam.HEADER_IDEMPOTENCY_KEY;
 import static com.playtomic.tests.wallet.enums.WalletOperationStatus.*;
 import static com.playtomic.tests.wallet.enums.WalletOperationType.WALLET_OPERATION_TYPE_TOP_UP;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@AutoConfigureWebTestClient
-@ActiveProfiles("test")
+@AutoConfigureWebTestClient(timeout = "PT15S")
+@ActiveProfiles({"test", "local-top-up"})
 @Import(WalletApplicationIT.MongoConfiguration.class)
 class WalletApplicationIT {
 
@@ -105,12 +107,128 @@ class WalletApplicationIT {
 
     private static final Duration DEADLINE = Duration.ofSeconds(15);
     private static final String TEST_CARD = "4111111111111111";
+    private static final String HTTP_TEST_CARD = "4242424242424242";
+    private static final String WALLETS_PATH = "/api/v1/wallets";
+    private static final String LOOKUP_PATH = WALLETS_PATH + "/{id}";
+    private static final String TOP_UP_PATH = LOOKUP_PATH + "/top-ups";
+
+    @Test
+    void listsOnlyActiveWalletTopUpProviders() {
+        webClient.get().uri(WALLETS_PATH + "/payment-providers").exchange().expectStatus().isOk()
+                .expectHeader().valueEquals("Cache-Control", "no-store").expectBody()
+                .jsonPath("$.result.providers.length()").isEqualTo(1)
+                .jsonPath("$.result.providers[0]").isEqualTo("stripe");
+        verifyNoInteractions(stripe);
+    }
+
+    @Test
+    void servesTopUpOverHttpAndReplaysWithoutChargingTwice() {
+        String id = "http-credit";
+        var charge = new CardChargeModel(HTTP_TEST_CARD, new BigDecimal("5.25"));
+        when(stripe.charge(charge)).thenReturn(Mono.just(new PaymentReceiptModel("payment-http-credit")));
+        StepVerifier.create(seedWallet(id, "10.00")).expectComplete().verify(DEADLINE);
+
+        var first = postTopUp(id, "same-key", "5.25").expectStatus().isOk()
+                .expectHeader().valueEquals("Cache-Control", "no-store").expectBody()
+                .jsonPath("$.type").isEqualTo("response")
+                .jsonPath("$.version").isEqualTo("1")
+                .jsonPath("$.success").isEqualTo(true)
+                .jsonPath("$.result.status").isEqualTo("succeeded")
+                .jsonPath("$.result.walletId").isEqualTo(id)
+                .jsonPath("$.result.currency").isEqualTo("EUR")
+                .jsonPath("$.result.provider").isEqualTo("stripe")
+                .jsonPath("$.result.amount").isEqualTo(5.25)
+                .jsonPath("$.result.resultingBalance").isEqualTo(15.25)
+                .jsonPath("$.result.creditCardNumber").doesNotHaveJsonPath()
+                .jsonPath("$.result.version").doesNotHaveJsonPath()
+                .returnResult();
+        String operationId = JSON.readTree(first.getResponseBody()).path("result").path("operationId").asString();
+        assertThat(operationId).isNotBlank();
+        StepVerifier.create(mongo.findById(operationId, Document.class, "wallet_operations"))
+                .assertNext(row -> assertThat(row.getString("provider")).isEqualTo("stripe"))
+                .expectComplete().verify(DEADLINE);
+        StepVerifier.create(mongo.updateFirst(Query.query(Criteria.where("_id").is(operationId)),
+                        new Update().unset("provider"), "wallet_operations"))
+                .assertNext(result -> assertThat(result.getModifiedCount()).isEqualTo(1))
+                .expectComplete().verify(DEADLINE);
+        postTopUp(id, "same-key", "5.250").expectStatus().isOk().expectBody()
+                .jsonPath("$.result.operationId").isEqualTo(operationId)
+                .jsonPath("$.result.provider").isEqualTo("stripe")
+                .jsonPath("$.result.resultingBalance").isEqualTo(15.25);
+        webClient.post().uri(TOP_UP_PATH, id).contentType(MediaType.APPLICATION_JSON)
+                .header(HEADER_IDEMPOTENCY_KEY, "same-key").bodyValue(topUpBody("5.25", HTTP_TEST_CARD).replace("stripe", "paypal"))
+                .exchange().expectStatus().isEqualTo(409).expectBody()
+                .jsonPath("$.error.code").isEqualTo(WalletErrorCode.IDEMPOTENCY_CONFLICT.getCode());
+        webClient.get().uri(LOOKUP_PATH, id).exchange().expectStatus().isOk().expectBody()
+                .jsonPath("$.result.balance").isEqualTo(15.25);
+        verify(stripe, times(1)).charge(charge);
+    }
+
+    @Test
+    void returnsAcceptedOnUncertainChargeAndDoesNotRedispatchOnHttpReplay() {
+        String id = "http-uncertain";
+        var charge = new CardChargeModel(HTTP_TEST_CARD, BigDecimal.ONE);
+        when(stripe.charge(charge)).thenReturn(Mono.error(new StripeServiceException("timeout")));
+        StepVerifier.create(seedWallet(id, "0")).expectComplete().verify(DEADLINE);
+        for (int attempt = 0; attempt < 2; attempt++) {
+            postTopUp(id, "key", "1").expectStatus().isAccepted().expectBody()
+                    .jsonPath("$.result.status").isEqualTo("review_required")
+                    .jsonPath("$.result.resultingBalance").doesNotHaveJsonPath();
+        }
+        verify(stripe, times(1)).charge(charge);
+    }
+
+    @Test
+    void rejectsInvalidHttpTopUpsBeforeDispatch() {
+        String id = "http-invalid";
+        StepVerifier.create(seedWallet(id, "0")).expectComplete().verify(DEADLINE);
+        webClient.post().uri(TOP_UP_PATH, id).contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(topUpBody("1", HTTP_TEST_CARD)).exchange().expectStatus().isBadRequest();
+        // A whitespace-only field value is rejected by the Netty client before dispatch.
+        postTopUp(id, "", "1").expectStatus().isBadRequest();
+        webClient.post().uri(TOP_UP_PATH, id).contentType(MediaType.APPLICATION_JSON)
+                .header(HEADER_IDEMPOTENCY_KEY, "first", "second")
+                .bodyValue(topUpBody("1", HTTP_TEST_CARD)).exchange().expectStatus().isBadRequest();
+        webClient.post().uri(TOP_UP_PATH, id).contentType(MediaType.APPLICATION_JSON)
+                .header(HEADER_IDEMPOTENCY_KEY, "key").bodyValue("{").exchange().expectStatus().isBadRequest();
+        webClient.post().uri(TOP_UP_PATH, id).contentType(MediaType.APPLICATION_JSON)
+                .header(HEADER_IDEMPOTENCY_KEY, "key").bodyValue(topUpBody("1", HTTP_TEST_CARD).replace("EUR", "USD"))
+                .exchange().expectStatus().isBadRequest().expectBody()
+                .jsonPath("$.error.code").isEqualTo(WalletErrorCode.CURRENCY_MISMATCH.getCode());
+        webClient.post().uri(TOP_UP_PATH, id).contentType(MediaType.APPLICATION_JSON)
+                .header(HEADER_IDEMPOTENCY_KEY, "key").bodyValue(topUpBody("1", TEST_CARD)).exchange()
+                .expectStatus().isBadRequest().expectBody()
+                .jsonPath("$.error.code").isEqualTo(WalletErrorCode.INVALID_REQUEST.getCode());
+        for (String body : java.util.List.of(topUpBody("1", HTTP_TEST_CARD).replace("\"provider\":\"stripe\",", ""),
+                topUpBody("1", HTTP_TEST_CARD).replace("stripe", ""),
+                topUpBody("1", HTTP_TEST_CARD).replace("stripe", "paypal"))) {
+            webClient.post().uri(TOP_UP_PATH, id).contentType(MediaType.APPLICATION_JSON)
+                    .header(HEADER_IDEMPOTENCY_KEY, "key").bodyValue(body).exchange()
+                    .expectStatus().isBadRequest().expectBody()
+                    .jsonPath("$.error.code").isEqualTo(WalletErrorCode.INVALID_REQUEST.getCode());
+        }
+        postTopUp(id, "key", "1.1234567890123456789012345678901234")
+                .expectStatus().isBadRequest().expectBody()
+                .jsonPath("$.error.code").isEqualTo(WalletErrorCode.INVALID_REQUEST.getCode());
+        postTopUp("http-missing", "key", "1").expectStatus().isNotFound().expectBody()
+                .jsonPath("$.error.code").isEqualTo(WalletErrorCode.WALLET_NOT_FOUND.getCode());
+        verifyNoInteractions(stripe);
+    }
+
+    private WebTestClient.ResponseSpec postTopUp(String id, String key, String amount) {
+        return webClient.post().uri(TOP_UP_PATH, id).contentType(MediaType.APPLICATION_JSON)
+                .header(HEADER_IDEMPOTENCY_KEY, key).bodyValue(topUpBody(amount, HTTP_TEST_CARD)).exchange();
+    }
+
+    private static String topUpBody(String amount, String card) {
+        return "{\"amount\":%s,\"currency\":\"EUR\",\"provider\":\"stripe\",\"creditCardNumber\":\"%s\"}".formatted(amount, card);
+    }
 
     @Test
     void servesHttpAndConnectsToAReactiveMongoReplicaSet() {
         assertThat(applicationContext.getBeansOfType(CommonExceptionHandler.class)).hasSize(1);
 
-        webClient.get().uri("/log").exchange()
+        webClient.get().uri(WALLETS_PATH + "/log").exchange()
                 .expectStatus().isOk()
                 .expectBody()
                 .jsonPath("$.result.string").isNotEmpty();
@@ -136,7 +254,7 @@ class WalletApplicationIT {
                 .expectComplete()
                 .verify(Duration.ofSeconds(10));
 
-        webClient.get().uri("/{id}", id).exchange()
+        webClient.get().uri(LOOKUP_PATH, id).exchange()
                 .expectStatus().isOk()
                 .expectBody()
                 .consumeWith(result -> {
@@ -155,7 +273,7 @@ class WalletApplicationIT {
 
     @Test
     void returnsNotFoundForAnUnknownWallet() {
-        webClient.get().uri("/{id}", "missing").exchange()
+        webClient.get().uri(LOOKUP_PATH, "missing").exchange()
                 .expectStatus().isNotFound()
                 .expectBody()
                 .jsonPath("$.success").isEqualTo(false)
@@ -164,7 +282,7 @@ class WalletApplicationIT {
 
     @Test
     void rejectsABlankWalletId() {
-        webClient.get().uri("/{id}", " ").exchange()
+        webClient.get().uri(LOOKUP_PATH, " ").exchange()
                 .expectStatus().isBadRequest()
                 .expectBody()
                 .jsonPath("$.success").isEqualTo(false)
@@ -179,7 +297,7 @@ class WalletApplicationIT {
                         .append("balance", invalidBalance), "wallets"))
                 .expectNextCount(1).expectComplete().verify(DEADLINE);
 
-        webClient.get().uri("/{id}", id).exchange()
+        webClient.get().uri(LOOKUP_PATH, id).exchange()
                 .expectStatus().isEqualTo(500)
                 .expectBody()
                 .jsonPath("$.success").isEqualTo(false)
@@ -244,7 +362,7 @@ class WalletApplicationIT {
                                         .flatMap(result -> mutations.spend("debit-race", key, amount, "EUR")
                                                 .map(WalletApplicationIT::successfulResult)
                                                 .doOnNext(replay -> assertThat(replay).isEqualTo(result)))))
-                        .map(WalletOperationModel::getStatus).collectList())
+                .map(WalletOperationModel::getStatus).collectList())
                 .assertNext(statuses -> assertThat(statuses).containsExactlyInAnyOrder(
                         WALLET_OPERATION_STATUS_SUCCEEDED, WALLET_OPERATION_STATUS_INSUFFICIENT_FUNDS))
                 .expectComplete().verify(DEADLINE);
@@ -275,7 +393,7 @@ class WalletApplicationIT {
     void recordedReceiptSurvivesAFailedOutboxWriteAndCanBeAppliedLater() {
         String id = "receipt-recovery-operation";
         var request = new WalletOperationModel(id, "receipt-recovery", WALLET_OPERATION_TYPE_TOP_UP,
-                new BigDecimal("2.00"), "EUR", WALLET_OPERATION_STATUS_PENDING, null, Instant.now());
+                new BigDecimal("2.00"), "EUR", WALLET_OPERATION_STATUS_PENDING, null, Instant.now(), "stripe");
         Query eventId = Query.query(Criteria.where("_id").is(id));
         StepVerifier.create(seedWallet("receipt-recovery", "4.00").then(operations.reserve(request))
                         .doOnNext(WalletApplicationIT::presentResult)
@@ -304,9 +422,9 @@ class WalletApplicationIT {
         Instant stale = Instant.now().minus(Duration.ofMinutes(5));
         String walletId = "reconciliation-wallet";
         var uncertain = new WalletOperationModel("stale-charge", walletId, WALLET_OPERATION_TYPE_TOP_UP,
-                BigDecimal.ONE, "EUR", WALLET_OPERATION_STATUS_PENDING, null, stale);
+                BigDecimal.ONE, "EUR", WALLET_OPERATION_STATUS_PENDING, null, stale, "stripe");
         var receipted = new WalletOperationModel("stale-receipt", walletId, WALLET_OPERATION_TYPE_TOP_UP,
-                BigDecimal.ONE, "EUR", WALLET_OPERATION_STATUS_PENDING, null, stale);
+                BigDecimal.ONE, "EUR", WALLET_OPERATION_STATUS_PENDING, null, stale, "stripe");
         var job = new WalletReconciliationJob(operations, operationEntities, leases, reconciliationProperties);
         Query id = Query.query(Criteria.where("_id").is(receipted.getId()));
         Mono<Void> setup = seedWallet(walletId, "1").then(operations.reserve(uncertain))

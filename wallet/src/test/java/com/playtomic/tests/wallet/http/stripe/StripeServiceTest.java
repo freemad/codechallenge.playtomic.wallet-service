@@ -199,11 +199,11 @@ class StripeServiceTest {
                 .bindNow();
         String baseUrl = "http://127.0.0.1:" + server.port();
         var stripe = new WalletPaymentProviderProps.Provider(URI.create(baseUrl + "/charges"),
-                baseUrl + "/payments/{payment_id}/refunds", null, null, Duration.ofSeconds(1), Duration.ofSeconds(2));
+                baseUrl + "/payments/{payment_id}/refunds", null, null, Duration.ofSeconds(1), Duration.ofSeconds(2), true, null);
         var paypal = new WalletPaymentProviderProps.Provider(null, null, URI.create(baseUrl + "/orders"), null,
-                stripe.getConnectTimeout(), stripe.getRequestTimeout());
+                stripe.getConnectTimeout(), stripe.getRequestTimeout(), false, null);
         var redsys = new WalletPaymentProviderProps.Provider(null, null, null, URI.create(baseUrl + "/authorization"),
-                stripe.getConnectTimeout(), stripe.getRequestTimeout());
+                stripe.getConnectTimeout(), stripe.getRequestTimeout(), false, null);
         var props = new WalletPaymentProviderProps(Map.of(WalletPaymentProviderProps.STRIPE, stripe,
                 WalletPaymentProviderProps.PAYPAL, paypal, WalletPaymentProviderProps.REDSYS, redsys));
         var factory = new NonRetryingWebClientFactory(WebClient.builder(), resources);

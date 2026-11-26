@@ -5,6 +5,7 @@ import com.playtomic.tests.common.http.ReactiveHttpClientConfiguration;
 import com.playtomic.tests.wallet.http.stripe.StripeService;
 import com.playtomic.tests.wallet.mappers.StripePaymentMapper;
 import com.playtomic.tests.wallet.models.ProviderPaymentResult;
+import com.playtomic.tests.wallet.services.WalletTopUpProviders;
 import com.playtomic.tests.wallet.services.adapter.PayPalAdapter;
 import com.playtomic.tests.wallet.services.adapter.RedsysAdapter;
 import com.playtomic.tests.wallet.services.adapter.StripeAdapter;
@@ -74,6 +75,18 @@ class WalletPaymentProviderClientsTest {
                 assertThat(provider.getRequestTimeout()).isEqualTo(Duration.ofSeconds(5));
             });
         });
+    }
+
+    @Test
+    void listsOnlyEnabledAndApprovedTopUpAdaptersInTheLocalProfile() {
+        var local = runner.withPropertyValues("spring.profiles.active=local-top-up");
+        local.run(context -> assertThat(context.getBean(WalletTopUpProviders.class).activeIds()).containsExactly("stripe"));
+        local.withPropertyValues("wallet.payment-providers.stripe.top-up-enabled=false")
+                .run(context -> assertThat(context.getBean(WalletTopUpProviders.class).activeIds()).isEmpty());
+        local.withPropertyValues("wallet.payment-providers.stripe.charges-uri=https://example.invalid/charges")
+                .run(context -> assertThat(context.getBean(WalletTopUpProviders.class).activeIds()).isEmpty());
+        local.withPropertyValues("wallet.payment-providers.stripe.charges-uri=http://127.0.0.1:9999/other")
+                .run(context -> assertThat(context.getBean(WalletTopUpProviders.class).activeIds()).isEmpty());
     }
 
     @Test

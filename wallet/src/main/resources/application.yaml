@@ -12,6 +12,9 @@ spring.kafka.producer:
     delivery.timeout.ms: 15000
     request.timeout.ms: 10000
 wallet:
+  top-up:
+    http:
+      enabled: false
   outbox:
     enabled: ${WALLET_OUTBOX_ENABLED:false}
     interval: ${WALLET_OUTBOX_INTERVAL:2s}
@@ -29,6 +32,7 @@ wallet:
     batch-size: ${WALLET_RECONCILIATION_BATCH_SIZE:25}
   payment-providers:
     stripe:
+      top-up-enabled: ${WALLET_PAYMENT_PROVIDERS_STRIPE_TOP_UP_ENABLED:true}
       connect-timeout: ${WALLET_PAYMENT_PROVIDERS_STRIPE_CONNECT_TIMEOUT:2s}
       request-timeout: ${WALLET_PAYMENT_PROVIDERS_STRIPE_REQUEST_TIMEOUT:5s}
     paypal:
@@ -54,3 +58,17 @@ wallet:
     stripe:
       charges-uri: "${WALLET_PAYMENT_PROVIDERS_STRIPE_CHARGES_URI:${STRIPE_SIMULATOR_CHARGESURI:http://localhost:9999}}"
       refunds-uri: "${WALLET_PAYMENT_PROVIDERS_STRIPE_REFUNDS_URI:${STRIPE_SIMULATOR_REFUNDSURI:http://localhost:9999/payments/{payment_id}/refunds}}"
+---
+spring.config.activate.on-profile: local-top-up
+server.address: 127.0.0.1
+spring.mongodb.uri: "${SPRING_MONGODB_URI:mongodb://localhost:27017/playtomic?directConnection=true&replicaSet=wallet-rs&w=majority}"
+wallet:
+  top-up:
+    http:
+      enabled: true
+      synthetic-card-number: "4242424242424242"
+  payment-providers:
+    stripe:
+      charges-uri: "${WALLET_PAYMENT_PROVIDERS_STRIPE_CHARGES_URI:http://127.0.0.1:9999/v1/stripe-simulator/charges}"
+      local-top-up-allowed-charge-uri: "http://127.0.0.1:9999/v1/stripe-simulator/charges"
+      refunds-uri: "http://127.0.0.1:9999/v1/stripe-simulator/payments/{payment_id}/refunds"

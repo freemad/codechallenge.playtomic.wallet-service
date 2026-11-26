@@ -37,6 +37,7 @@ public class WalletOperationEntity implements IEntity<String> {
     @Field(targetType = FieldType.DECIMAL128)
     BigDecimal resultingBalance;
     Instant updatedAt;
+    String provider;
 
     @Transient
     @NonFinal
