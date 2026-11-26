@@ -25,16 +25,10 @@ services:
 
   mongo-init:
     image: *mongo-image
-    depends_on:
-      mongo-1:
-        condition: service_healthy
-      mongo-2:
-        condition: service_healthy
-      mongo-3:
-        condition: service_healthy
+    depends_on: [mongo-1, mongo-2, mongo-3]
     volumes:
       - ./init-replica-set.js:/init-replica-set.js:ro
-    command: ["mongosh", "--quiet", "mongodb://mongo-1:27017/admin?directConnection=true", "--file", "/init-replica-set.js"]
+    command: ["mongosh", "--quiet", "--nodb", "--file", "/init-replica-set.js"]
 
   simulator:
     build:
@@ -55,16 +49,6 @@ services:
         condition: service_started
     environment:
       - SPRING_MONGODB_URI=${SPRING_MONGODB_URI:-mongodb://mongo-1:27017,mongo-2:27017,mongo-3:27017/playtomic?replicaSet=wallet-rs&w=majority}
-      - WALLET_AUDIT_ENABLED
-      - WALLET_AUDIT_INTERVAL
-      - WALLET_AUDIT_LEASE
-      - WALLET_AUDIT_TIMEOUT
-      - WALLET_AUDIT_BATCH_SIZE
-      - WALLET_AUDIT_TOPIC
-      - SPRING_KAFKA_BOOTSTRAP_SERVERS
-      - WALLET_KAFKA_MAX_BLOCK_MS
-      - WALLET_KAFKA_DELIVERY_TIMEOUT_MS
-      - WALLET_KAFKA_REQUEST_TIMEOUT_MS
       - WALLET_PAYMENT_PROVIDERS_STRIPE_CHARGES_URI=${WALLET_PAYMENT_PROVIDERS_STRIPE_CHARGES_URI:-${STRIPE_SIMULATOR_CHARGESURI:-http://simulator:9999/v1/stripe-simulator/charges}}
       - WALLET_PAYMENT_PROVIDERS_STRIPE_REFUNDS_URI=${WALLET_PAYMENT_PROVIDERS_STRIPE_REFUNDS_URI:-${STRIPE_SIMULATOR_REFUNDSURI:-http://simulator:9999/v1/stripe-simulator/payments/{payment_id}/refunds}}
       - WALLET_PAYMENT_PROVIDERS_STRIPE_CONNECT_TIMEOUT=${WALLET_PAYMENT_PROVIDERS_STRIPE_CONNECT_TIMEOUT:-2s}
@@ -75,6 +59,23 @@ services:
       - WALLET_PAYMENT_PROVIDERS_REDSYS_AUTHORIZATION_URI=${WALLET_PAYMENT_PROVIDERS_REDSYS_AUTHORIZATION_URI:-${WALLET_SIMULATOR_REDSYS_AUTHORIZATION_URI:-http://simulator:9999/v1/redsys-simulator/sis/rest/trataPeticion}}
       - WALLET_PAYMENT_PROVIDERS_REDSYS_CONNECT_TIMEOUT=${WALLET_PAYMENT_PROVIDERS_REDSYS_CONNECT_TIMEOUT:-${WALLET_SIMULATOR_CONNECT_TIMEOUT:-2s}}
       - WALLET_PAYMENT_PROVIDERS_REDSYS_REQUEST_TIMEOUT=${WALLET_PAYMENT_PROVIDERS_REDSYS_REQUEST_TIMEOUT:-${WALLET_SIMULATOR_REQUEST_TIMEOUT:-5s}}
+      - WALLET_RECONCILIATION_ENABLED
+      - WALLET_RECONCILIATION_INTERVAL
+      - WALLET_RECONCILIATION_LEASE
+      - WALLET_RECONCILIATION_RUN_TIMEOUT
+      - WALLET_RECONCILIATION_STALE_PENDING_AGE
+      - WALLET_RECONCILIATION_RECEIPT_DELAY
+      - WALLET_RECONCILIATION_BATCH_SIZE
+      - WALLET_AUDIT_ENABLED
+      - WALLET_AUDIT_INTERVAL
+      - WALLET_AUDIT_LEASE
+      - WALLET_AUDIT_TIMEOUT
+      - WALLET_AUDIT_BATCH_SIZE
+      - WALLET_AUDIT_TOPIC
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS
+      - WALLET_KAFKA_MAX_BLOCK_MS
+      - WALLET_KAFKA_DELIVERY_TIMEOUT_MS
+      - WALLET_KAFKA_REQUEST_TIMEOUT_MS
     ports:
       - "127.0.0.1:${WALLET_HTTP_PORT:-8090}:8090"
 

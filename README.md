@@ -53,6 +53,8 @@ opt-in local demo below.
 
 ## Try a local top-up
 
+From the repository root run `python3 deployment/check-wallet.py` (Python 3, Maven, JDK 25 and Docker Compose). It builds both services, seeds a disposable replica set, checks GET → top-up → replay → GET, then removes its containers and volumes. The client and services share a private loopback interface; the demo publishes no payment port. For interactive host use, follow the steps below.
+
 `POST /api/v1/wallets/{id}/top-ups` is disabled by default, including in the default
 Compose stack. For this demo, run both Java services on the same host. Start
 [the local payment simulator](#local-payment-simulator) and use a disposable,
@@ -93,8 +95,10 @@ curl -i http://127.0.0.1:8090/api/v1/wallets/wallet-demo/top-ups \
   --data '{"amount":5.25,"currency":"EUR","provider":"stripe","creditCardNumber":"4242424242424242"}'
 ```
 
-Supply exactly one nonblank `Idempotency-Key`, a positive amount exactly
-representable as Decimal128, the wallet's stored currency, and a provider ID.
+Supply exactly one nonblank `Idempotency-Key`, the wallet's currency and a provider ID. The Stripe simulator accepts EUR major units from **0.01 through 999999.99** inclusive, exactly divisible into cents (no rounding). Its charge request has no currency field; its receipt ID confirms fixture acceptance, not independently verified currency, amount or wallet credit. These limits govern fresh Stripe charges, not wallet balances, spending or existing-operation replay.
+
+V1 sends `amount`, `balance` and `resultingBalance` as JSON **numbers**. Serialize from decimal values and parse number tokens directly into decimals (e.g. Python `json.loads(body, parse_float=Decimal)`), never via floating point. A JavaScript `Number` cannot preserve `9007199254740993.01`; use a decimal-aware JSON parser and writer.
+
 Inspect `result.status`, not just the HTTP status or envelope `success` flag:
 
 | HTTP status | Meaning |
@@ -105,10 +109,24 @@ Inspect `result.status`, not just the HTTP status or envelope `success` flag:
 | `409` | The same wallet/key already identifies a different amount, currency, operation type, or provider. |
 | `500` | Unexpected failure; internal details are not returned. |
 
-If the response is lost or ambiguous, replay the same request with the same
-key. The replay returns the recorded operation state, not the current wallet
-balance, and does not dispatch a second charge. Do not use a new key to retry an
-uncertain payment.
+For example, given the wallet HTTP `status` and response `body` bytes:
+
+```python
+import json
+from decimal import Decimal
+
+reply = json.loads(body, parse_float=Decimal)
+result = reply.get("result") or {}
+state = result.get("status")
+if status == 200 and state == "succeeded":
+    print("Credited; balance after this operation:", result["resultingBalance"])
+elif status == 200 and state in ("payment_rejected", "provider_unavailable"):
+    print("Not credited:", state)  # A provider 422 is a recorded rejection here.
+elif status == 202 and state in ("pending", "receipt_recorded", "review_required"):
+    print("Unresolved:", state)  # review_required needs evidence, not a new charge.
+else:
+    print("No confirmation of credit; inspect the error or unexpected reply.")
+```
 
 ## Run with Docker Compose
 
