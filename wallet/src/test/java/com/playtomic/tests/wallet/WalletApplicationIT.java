@@ -5,6 +5,8 @@ import com.playtomic.tests.common.models.Error;
 import com.playtomic.tests.common.models.Outcome;
 import com.playtomic.tests.wallet.configs.WalletReconciliationProps;
 import com.playtomic.tests.wallet.enums.WalletErrorCode;
+import com.playtomic.tests.wallet.enums.WalletOperationMongoStatus;
+import com.playtomic.tests.wallet.enums.WalletOperationMongoType;
 import com.playtomic.tests.wallet.http.stripe.StripeServiceException;
 import com.playtomic.tests.wallet.jobs.WalletReconciliationJob;
 import com.playtomic.tests.wallet.models.CardChargeModel;
@@ -18,7 +20,6 @@ import com.playtomic.tests.wallet.services.adapter.StripeAdapter;
 import com.playtomic.tests.wallet.services.entity.WalletJobLeaseEntityService;
 import com.playtomic.tests.wallet.services.entity.WalletOperationEntityService;
 import com.playtomic.tests.wallet.services.entity.WalletOutboxEntityService;
-import com.playtomic.tests.wallet.entities.WalletOperationEntity;
 import org.bson.Document;
 import org.bson.types.Decimal128;
 import org.junit.jupiter.api.Test;
@@ -332,7 +333,7 @@ class WalletApplicationIT {
                 })
                 .expectComplete().verify(DEADLINE);
         verify(stripe, times(1)).charge(new CardChargeModel(TEST_CARD, amount));
-        StepVerifier.create(outboxCount("credit-race", "WalletCredited"))
+        StepVerifier.create(outboxCount("credit-race", 1))
                 .expectNext(1L).expectComplete().verify(DEADLINE);
         StepVerifier.create(mutations.spend("credit-race", "same-key", amount, "EUR"))
                 .assertNext(result -> assertFailure(result, WalletErrorCode.IDEMPOTENCY_CONFLICT))
@@ -369,7 +370,7 @@ class WalletApplicationIT {
         StepVerifier.create(wallets.findById("debit-race").map(result -> successfulResult(result).getBalance()))
                 .assertNext(balance -> assertThat(balance).isEqualByComparingTo("3.00"))
                 .expectComplete().verify(DEADLINE);
-        StepVerifier.create(outboxCount("debit-race", "WalletDebited"))
+        StepVerifier.create(outboxCount("debit-race", 2))
                 .expectNext(1L).expectComplete().verify(DEADLINE);
         verifyNoInteractions(stripe);
     }
@@ -384,7 +385,7 @@ class WalletApplicationIT {
                         .map(WalletOperationModel::getStatus))
                 .expectNext(WALLET_OPERATION_STATUS_REVIEW_REQUIRED, WALLET_OPERATION_STATUS_REVIEW_REQUIRED)
                 .expectComplete().verify(DEADLINE);
-        StepVerifier.create(outboxCount("uncertain", "WalletCredited"))
+        StepVerifier.create(outboxCount("uncertain", 1))
                 .expectNext(0L).expectComplete().verify(DEADLINE);
         verify(stripe, times(1)).charge(charge);
     }
@@ -461,17 +462,17 @@ class WalletApplicationIT {
         var ids = java.util.List.of(first, prefix + "b", prefix + "c", prefix + "late",
                 prefix + "debit", prefix + "pending");
         var rows = java.util.List.of(
-                operationRow(ids.get(1), "TOP_UP", "RECEIPT_RECORDED", oldest),
-                operationRow(first, "TOP_UP", "RECEIPT_RECORDED", oldest),
-                operationRow(ids.get(2), "TOP_UP", "RECEIPT_RECORDED", cutoff),
-                operationRow(ids.get(3), "TOP_UP", "RECEIPT_RECORDED", deferred),
-                operationRow(ids.get(4), "SPEND", "RECEIPT_RECORDED", oldest),
-                operationRow(ids.get(5), "TOP_UP", "PENDING", oldest));
+                operationRow(ids.get(1), 1, 3, oldest),
+                operationRow(first, 1, 3, oldest),
+                operationRow(ids.get(2), 1, 3, cutoff),
+                operationRow(ids.get(3), 1, 3, deferred),
+                operationRow(ids.get(4), 2, 3, oldest),
+                operationRow(ids.get(5), 1, 1, oldest));
         String collection = "wallet_operations";
         var cleanup = Query.query(Criteria.where("_id").in(ids));
 
         Mono<Void> checks = operationRepository.findByTypeAndStatusAndUpdatedAtLessThanEqualOrderByUpdatedAtAscIdAsc(
-                        WalletOperationEntity.Type.TOP_UP, WalletOperationEntity.Status.RECEIPT_RECORDED,
+                        WalletOperationMongoType.TOP_UP, WalletOperationMongoStatus.RECEIPT_RECORDED,
                         cutoff, PageRequest.ofSize(3))
                 .map(row -> row.getId()).collectList()
                 .doOnNext(batch -> assertThat(batch).containsExactly(first, ids.get(1), ids.get(2)))
@@ -485,7 +486,7 @@ class WalletApplicationIT {
                 .switchIfEmpty(Mono.error(() -> new AssertionError("Deferred operation disappeared")))
                 .doOnNext(row -> assertThat(row.getUpdatedAt()).isEqualTo(deferred))
                 .thenMany(operationRepository.findByTypeAndStatusAndUpdatedAtLessThanEqualOrderByUpdatedAtAscIdAsc(
-                        WalletOperationEntity.Type.TOP_UP, WalletOperationEntity.Status.RECEIPT_RECORDED,
+                        WalletOperationMongoType.TOP_UP, WalletOperationMongoStatus.RECEIPT_RECORDED,
                         cutoff, PageRequest.ofSize(1)))
                 .map(row -> row.getId()).collectList()
                 .doOnNext(batch -> assertThat(batch).containsExactly(ids.get(1))).then();
@@ -496,7 +497,7 @@ class WalletApplicationIT {
                 .expectComplete().verify(DEADLINE);
     }
 
-    private static Document operationRow(String id, String type, String status, Instant updatedAt) {
+    private static Document operationRow(String id, int type, int status, Instant updatedAt) {
         return new Document("_id", id).append("walletId", "repository-reconciliation")
                 .append("type", type).append("status", status).append("updatedAt", Date.from(updatedAt))
                 .append("amount", new Decimal128(BigDecimal.ONE)).append("currency", "EUR");
@@ -577,7 +578,7 @@ class WalletApplicationIT {
                 .append("balance", new Decimal128(new BigDecimal(balance))), "wallets").then();
     }
 
-    private Mono<Long> outboxCount(String walletId, String type) {
+    private Mono<Long> outboxCount(String walletId, int type) {
         return mongo.count(Query.query(Criteria.where("walletId").is(walletId).and("eventType").is(type)),
                 "wallet_outbox");
     }
