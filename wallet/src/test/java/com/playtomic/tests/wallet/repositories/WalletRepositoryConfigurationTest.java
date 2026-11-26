@@ -3,14 +3,20 @@ package com.playtomic.tests.wallet.repositories;
 import com.mongodb.reactivestreams.client.MongoClient;
 import com.playtomic.tests.common.configs.CommonProps;
 import com.playtomic.tests.common.contracts.models.IEntity;
+import com.playtomic.tests.common.exceptions.BusinessException;
 import com.playtomic.tests.wallet.entities.WalletEntity;
 import com.playtomic.tests.wallet.entities.WalletJobLeaseEntity;
 import com.playtomic.tests.wallet.entities.WalletOperationEntity;
 import com.playtomic.tests.wallet.entities.WalletOutboxEntity;
 import com.playtomic.tests.wallet.entities.WalletPaymentReceiptEntity;
+import com.playtomic.tests.wallet.enums.WalletOperationMongoStatus;
+import com.playtomic.tests.wallet.enums.WalletOperationMongoType;
 import org.bson.Document;
 import org.bson.types.Decimal128;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
@@ -23,6 +29,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -97,25 +104,48 @@ class WalletRepositoryConfigurationTest {
         var time = Instant.parse("2026-11-24T00:00:00Z");
         var amount = new BigDecimal("0.02");
         var balance = new BigDecimal("9007199254740993.01");
-        var operation = new WalletOperationEntity(id, "wallet", WalletOperationEntity.Type.TOP_UP, amount,
-                "EUR", WalletOperationEntity.Status.SUCCEEDED, balance, time, "stripe");
+        var operation = new WalletOperationEntity(id, "wallet", WalletOperationMongoType.TOP_UP, amount,
+                "EUR", WalletOperationMongoStatus.SUCCEEDED, balance, time, "stripe");
         var receipt = new WalletPaymentReceiptEntity("payment-id", id, time);
-        var outbox = new WalletOutboxEntity(id, "wallet", "WalletCredited", 1, amount,
+        var outbox = new WalletOutboxEntity(id, "wallet", 1, 1, amount,
                 "EUR", balance, time, time, null, null);
 
         assertThat(roundTrip(operation, WalletOperationEntity.class))
-                .containsEntry("type", "TOP_UP")
-                .containsEntry("status", "SUCCEEDED")
+                .containsEntry("type", 1)
+                .containsEntry("status", 4)
                 .containsEntry("provider", "stripe")
                 .containsEntry("amount", new Decimal128(amount))
                 .containsEntry("resultingBalance", new Decimal128(balance));
         assertThat(roundTrip(receipt, WalletPaymentReceiptEntity.class))
                 .containsEntry("operationId", id).doesNotContainKey("providerPaymentId");
         assertThat(roundTrip(outbox, WalletOutboxEntity.class))
-                .containsEntry("eventType", "WalletCredited")
+                .containsEntry("eventType", 1)
                 .containsEntry("schemaVersion", 1)
                 .containsEntry("amount", new Decimal128(amount))
                 .containsEntry("resultingBalance", new Decimal128(balance));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"TOP_UP,1,PENDING,1", "SPEND,2,REVIEW_REQUIRED,2", "TOP_UP,1,RECEIPT_RECORDED,3",
+            "SPEND,2,SUCCEEDED,4", "TOP_UP,1,INSUFFICIENT_FUNDS,5", "SPEND,2,PAYMENT_REJECTED,6",
+            "TOP_UP,1,PROVIDER_UNAVAILABLE,7", "SPEND,2,WALLET_UNAVAILABLE,8"})
+    void roundTripsStableOperationCodes(WalletOperationMongoType type, int typeCode,
+                                        WalletOperationMongoStatus status, int statusCode) {
+        var operation = new WalletOperationEntity("op", "wallet", type, BigDecimal.ONE, "EUR", status,
+                null, Instant.EPOCH, null);
+        assertThat(roundTrip(operation, WalletOperationEntity.class))
+                .containsEntry("type", typeCode).containsEntry("status", statusCode);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, 9, 255, 65537})
+    void rejectsUnknownOperationCodes(int code) {
+        var valid = new Document("type", 1).append("status", 1);
+        for (String field : new String[]{"type", "status"}) {
+            var invalid = new Document(valid).append(field, code);
+            assertThatThrownBy(() -> mongo.getConverter().read(WalletOperationEntity.class, invalid))
+                    .hasRootCauseInstanceOf(BusinessException.class);
+        }
     }
 
     private <T extends IEntity<String>> Document roundTrip(T entity, Class<T> type) {

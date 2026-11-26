@@ -1,7 +1,7 @@
 package com.playtomic.tests.wallet.repositories;
 
 import com.playtomic.tests.wallet.entities.WalletOperationEntity;
-import com.playtomic.tests.wallet.entities.WalletOperationEntity.Status;
+import com.playtomic.tests.wallet.enums.WalletOperationMongoStatus;
 import lombok.RequiredArgsConstructor;
 import org.bson.types.Decimal128;
 import org.springframework.data.mongodb.core.FindAndModifyOptions;
@@ -17,7 +17,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Arrays;
 
-import static com.playtomic.tests.wallet.entities.WalletOperationEntity.Type.TOP_UP;
+import static com.playtomic.tests.wallet.enums.WalletOperationMongoType.TOP_UP;
 import static org.springframework.data.domain.Sort.Direction.ASC;
 
 @Repository
@@ -36,19 +36,21 @@ class WalletOperationMongoOperations implements IWalletOperationMongoOperations 
     }
 
     @Override
-    public Mono<WalletOperationEntity> transitionTopUp(String id, Status next, Status... expected) {
+    public Mono<WalletOperationEntity> transitionTopUp(String id, WalletOperationMongoStatus next,
+                                                       WalletOperationMongoStatus... expected) {
         var criteria = Criteria.where("id").is(id).and(TYPE).is(TOP_UP).and(STATUS).in(Arrays.asList(expected));
         return Mono.defer(() -> update(criteria, changeStatus(next)));
     }
 
     @Override
-    public Mono<WalletOperationEntity> finalizeOperation(String id, Status expected, Status next, BigDecimal balance) {
+    public Mono<WalletOperationEntity> finalizeOperation(String id, WalletOperationMongoStatus expected,
+                                                          WalletOperationMongoStatus next, BigDecimal balance) {
         var criteria = Criteria.where("id").is(id).and(STATUS).is(expected);
         return Mono.defer(() -> update(criteria, changeStatus(next)
                 .set("resultingBalance", balance == null ? null : new Decimal128(balance))));
     }
 
-    private static Update changeStatus(Status next) {
+    private static Update changeStatus(WalletOperationMongoStatus next) {
         return new Update().set(STATUS, next).set(UPDATED_AT, Instant.now());
     }
 

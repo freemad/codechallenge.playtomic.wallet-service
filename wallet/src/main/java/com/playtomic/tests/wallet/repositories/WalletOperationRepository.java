@@ -2,8 +2,8 @@ package com.playtomic.tests.wallet.repositories;
 
 import com.playtomic.tests.common.contracts.models.IRepository;
 import com.playtomic.tests.wallet.entities.WalletOperationEntity;
-import com.playtomic.tests.wallet.entities.WalletOperationEntity.Status;
-import com.playtomic.tests.wallet.entities.WalletOperationEntity.Type;
+import com.playtomic.tests.wallet.enums.WalletOperationMongoStatus;
+import com.playtomic.tests.wallet.enums.WalletOperationMongoType;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.mongodb.repository.Query;
 import org.springframework.data.mongodb.repository.Update;
@@ -16,9 +16,15 @@ import java.time.Instant;
 @Repository
 public interface WalletOperationRepository extends IRepository<WalletOperationEntity, String> {
     Flux<WalletOperationEntity> findByTypeAndStatusAndUpdatedAtLessThanEqualOrderByUpdatedAtAscIdAsc(
-            Type type, Status status, Instant cutoff, Pageable page);
+            WalletOperationMongoType type, WalletOperationMongoStatus status, Instant cutoff, Pageable page);
 
-    @Query("{ '_id': ?0, 'type': 'TOP_UP', 'status': 'RECEIPT_RECORDED', 'updatedAt': ?1 }")
-    @Update("{ '$set': { 'updatedAt': ?2 } }")
-    Mono<Long> deferReceiptRecovery(String id, Instant expectedUpdatedAt, Instant updatedAt);
+    default Mono<Long> deferReceiptRecovery(String id, Instant expectedUpdatedAt, Instant updatedAt) {
+        return updateTimestampIfUnchanged(id, WalletOperationMongoType.TOP_UP,
+                WalletOperationMongoStatus.RECEIPT_RECORDED, expectedUpdatedAt, updatedAt);
+    }
+
+    @Query("{ '_id': ?0, 'type': ?1, 'status': ?2, 'updatedAt': ?3 }")
+    @Update("{ '$set': { 'updatedAt': ?4 } }")
+    Mono<Long> updateTimestampIfUnchanged(String id, WalletOperationMongoType type, WalletOperationMongoStatus status,
+                                          Instant expectedUpdatedAt, Instant updatedAt);
 }
