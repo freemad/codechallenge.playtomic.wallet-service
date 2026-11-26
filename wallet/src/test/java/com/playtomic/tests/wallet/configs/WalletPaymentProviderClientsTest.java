@@ -1,7 +1,7 @@
 package com.playtomic.tests.wallet.configs;
 
 import com.playtomic.tests.common.configs.CommonProps;
-import com.playtomic.tests.common.http.ReactiveHttpClientConfiguration;
+import com.playtomic.tests.common.configs.ReactiveHttpClientConfiguration;
 import com.playtomic.tests.wallet.http.stripe.StripeService;
 import com.playtomic.tests.wallet.mappers.StripePaymentMapper;
 import com.playtomic.tests.wallet.models.ProviderPaymentResult;

@@ -5,8 +5,10 @@ import lombok.NoArgsConstructor;
 
 import java.net.URI;
 
+/** Validates service base URIs before they are used to construct outbound requests. */
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class ServiceEndpoint {
+    /** Checks for an HTTPS service origin or, when allowed, a loopback HTTP origin without embedded credentials. */
     public static boolean isSafe(URI uri, boolean allowLoopbackHttp) {
         if (uri == null || uri.getHost() == null || uri.getUserInfo() != null
                 || uri.getQuery() != null || uri.getFragment() != null

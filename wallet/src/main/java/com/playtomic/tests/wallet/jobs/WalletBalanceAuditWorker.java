@@ -20,6 +20,7 @@ import com.playtomic.tests.common.exceptions.BusinessException;
 import com.playtomic.tests.common.utils.ExceptionNormalizer;
 import com.playtomic.tests.wallet.observability.WalletLogEvent;
 
+/** Runs cutoff audits and publishes queued discrepancy alerts to Kafka. */
 @Component
 @EnableScheduling
 @ConditionalOnProperty(name = "wallet.audit.enabled", havingValue = "true")
@@ -31,6 +32,7 @@ public class WalletBalanceAuditWorker {
     private final JsonMapper json;
     private final Mono<String> ready;
 
+    /** Connects cutoff auditing and queued alert delivery to the configured worker. */
     public WalletBalanceAuditWorker(WalletBalanceAuditService audit, WalletAuditMongoOperations store, WalletAuditProps props,
                                     KafkaTemplate<String, String> kafka, JsonMapper json) {
         this.audit = audit;
@@ -41,11 +43,13 @@ public class WalletBalanceAuditWorker {
         ready = WalletWorkerParam.cacheSuccessfulIndex(Mono.defer(store::indexes));
     }
 
+    /** Processes a bounded batch of due balance audits; a database outage is not a balance discrepancy. */
     @Scheduled(fixedDelayString = "${wallet.audit.interval}")
     public Mono<Void> calculate() {
         return batch(() -> audit.auditNext(props.getLease()), WalletLogEvent.AUDIT_FAILED);
     }
 
+    /** Publishes claimed discrepancy alerts to Kafka before acknowledging their delivery in MongoDB. */
     @Scheduled(fixedDelayString = "${wallet.audit.interval}")
     public Mono<Void> publish() {
         return batch(() -> store.claimAlert(Instant.now(), props.getLease()).flatMap(row -> {

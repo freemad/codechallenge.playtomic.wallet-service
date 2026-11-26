@@ -15,6 +15,7 @@ import reactor.core.publisher.Mono;
 import java.time.Duration;
 import java.time.Instant;
 
+/** Provides model-level access to wallet job lease records. */
 @Service
 @RequiredArgsConstructor
 public class WalletJobLeaseEntityService implements IWalletEntityService<WalletJobLeaseModel, WalletJobLeaseEntity> {
@@ -24,6 +25,7 @@ public class WalletJobLeaseEntityService implements IWalletEntityService<WalletJ
     private final WalletJobLeaseEntityMapper mapper;
     private final IWalletJobLeaseMongoOperations mongoOperations;
 
+    /** Attempts to obtain the job lease and returns the token when acquired. */
     public Mono<String> acquire(String job, Duration duration) {
         return Mono.defer(() -> {
             String token = UuidV7Generator.generate().toString();
@@ -32,6 +34,7 @@ public class WalletJobLeaseEntityService implements IWalletEntityService<WalletJ
         });
     }
 
+    /** Releases the job lease only for the supplied owner token. */
     public Mono<Void> release(String job, String token) {
         return repository.deleteByIdAndToken(job, token).then();
     }

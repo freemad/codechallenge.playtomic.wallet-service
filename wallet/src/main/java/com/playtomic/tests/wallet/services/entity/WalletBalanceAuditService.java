@@ -12,16 +12,19 @@ import java.time.Duration;
 import java.time.Instant;
 import static com.playtomic.tests.wallet.observability.WalletLogEvent.AUDIT_DISCREPANCY;
 
+/** Compares a historical wallet snapshot with the ledger through the same sequence. */
 @Service
 @RequiredArgsConstructor
 public class WalletBalanceAuditService {
     private final WalletAuditMongoOperations repository;
     private final IWalletTransactions transactions;
 
+    /** Claims the next due wallet period and audits it if a claim is available. */
     public Mono<Boolean> auditNext(Duration lease) {
         return Mono.defer(() -> repository.claim(Instant.now(), lease)).flatMap(this::audit).defaultIfEmpty(false);
     }
 
+    /** Compares the claimed cutoff snapshot with its ledger and records a checkpoint or discrepancy. */
     public Mono<Boolean> audit(WalletAuditScheduleEntity claim) {
         return repository.atCutoff(claim).flatMap(snapshot -> {
             long through = snapshot.getLedgerSequence() == null ? 0 : snapshot.getLedgerSequence();

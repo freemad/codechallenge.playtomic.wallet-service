@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
+/** Looks up wallets and prepares the service outcome for the caller. */
 @Service
 @RequiredArgsConstructor
 public class WalletLookupService {
@@ -17,6 +18,7 @@ public class WalletLookupService {
     private final WalletEntityService entityService;
     private final WalletOutcomeHandler outcomeHandler;
 
+    /** Looks up the model for the supplied identifier. */
     public Mono<Outcome<WalletModel, Error>> findById(String id) {
         return outcomeHandler.lookup(Mono.defer(() -> {
             if (id == null || id.isBlank()) {

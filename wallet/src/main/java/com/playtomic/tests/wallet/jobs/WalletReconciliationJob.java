@@ -23,6 +23,7 @@ import reactor.core.publisher.Mono;
 
 import java.time.Instant;
 
+/** Claims a lease before reconciling stale operations without dispatching another charge. */
 @Component
 @EnableScheduling
 @ConditionalOnProperty(prefix = WalletReconciliationProps.PREFIX, name = "enabled", havingValue = "true")
@@ -35,6 +36,7 @@ public class WalletReconciliationJob {
     private final WalletReconciliationProps properties;
     private final Mono<String> indexReady;
 
+    /** Connects lease management and operation recovery to the configured reconciliation schedule. */
     public WalletReconciliationJob(WalletOperationService operations, WalletOperationEntityService operationEntities,
                                    WalletJobLeaseEntityService leases, WalletReconciliationProps properties) {
         this.operations = operations;
@@ -44,6 +46,7 @@ public class WalletReconciliationJob {
         this.indexReady = WalletWorkerParam.cacheSuccessfulIndex(Mono.defer(operationEntities::ensureReconciliationIndex));
     }
 
+    /** Claims the job lease and processes a bounded batch of stale operations. */
     @Scheduled(fixedDelayString = "${" + WalletReconciliationProps.PREFIX + ".interval}")
     public Mono<Void> reconcile() {
         return Mono.usingWhen(Mono.defer(() -> leases.acquire(JOB, properties.getLease())),

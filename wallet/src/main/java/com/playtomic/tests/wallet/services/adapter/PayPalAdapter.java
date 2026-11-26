@@ -27,6 +27,7 @@ public final class PayPalAdapter {
 
     private final PayPalClient client;
 
+    /** Creates a PayPal fixture order for the requested amount without capturing payment. */
     public Mono<Order> createOrder(BigDecimal amount) {
         return Mono.defer(() -> {
             if (amount == null || amount.signum() <= 0 || amount.compareTo(AMOUNT_LIMIT) >= 0
@@ -46,6 +47,7 @@ public final class PayPalAdapter {
         });
     }
 
+    /** Captures the previously created PayPal order and interprets the provider result. */
     public Mono<ProviderPaymentResult> captureOrder(Order order) {
         if (order == null) {
             return Mono.error(new IllegalArgumentException("A PayPal order is required"));
@@ -82,6 +84,7 @@ public final class PayPalAdapter {
         return value.isString() ? value.asString() : "";
     }
 
+    /** Identifies a PayPal order for subsequent capture. */
     @Value
     @AllArgsConstructor(access = AccessLevel.PRIVATE)
     public static class Order {

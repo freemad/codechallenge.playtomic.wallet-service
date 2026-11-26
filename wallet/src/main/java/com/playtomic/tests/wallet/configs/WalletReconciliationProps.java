@@ -6,6 +6,7 @@ import org.springframework.util.Assert;
 
 import java.time.Duration;
 
+/** Controls how often and how long reconciliation processes stale operations. */
 @Value
 @ConfigurationProperties(WalletReconciliationProps.PREFIX)
 public class WalletReconciliationProps {
@@ -17,6 +18,7 @@ public class WalletReconciliationProps {
     Duration receiptDelay;
     int batchSize;
 
+    /** Binds the settings for wallet reconciliation. */
     public WalletReconciliationProps(Duration interval, Duration lease, Duration runTimeout, Duration stalePendingAge,
                                      Duration receiptDelay, int batchSize) {
         Assert.isTrue(interval != null && interval.isPositive(), PREFIX + ".interval must be positive");

@@ -36,6 +36,7 @@ import reactor.core.publisher.Mono;
 import static com.playtomic.tests.common.constants.HttpParam.HEADER_IDEMPOTENCY_KEY;
 import static com.playtomic.tests.wallet.controllers.WalletHttpResponses.toResponse;
 
+/** Exposes wallet lookup and the opt-in local top-up handlers. */
 @RestController
 @RequestMapping("/api/v1/wallets")
 @RequiredArgsConstructor
@@ -50,6 +51,7 @@ public class WalletControllerV1 {
 
     private static final String PAYMENT_PROVIDERS_SEGMENT = "payment-providers";
 
+    /** Returns a timestamp in the response envelope for a smoke check. */
     @GetMapping("/log")
     public Mono<ResponseEntity<ResponseDtoV1>> log() {
         return Mono.fromCallable(() -> toResponse(new StringDtoV1().setString(String.valueOf(System.currentTimeMillis())),
@@ -57,18 +59,21 @@ public class WalletControllerV1 {
     }
 
     // Reserve the discovery path even when its handler is not registered.
+    /** Looks up the wallet by identifier and returns its result or mapped error in the HTTP envelope. */
     @GetMapping("/{id:(?!" + PAYMENT_PROVIDERS_SEGMENT + "\\z)[\\s\\S]+}")
     public Mono<ResponseEntity<ResponseDtoV1>> getWallet(@PathVariable("id") String id, ServerWebExchange exchange) {
         return walletService.findById(id).map(outcome -> toResponse(outcome, exchange.getRequest().getId(),
                 walletResponseMapper::toDto, lookupStatus(outcome), CacheControl.empty()));
     }
 
+    /** Lists configured top-up providers without probing availability or charging a card. */
     @LocalTopUpRoute
     @GetMapping(path = "/" + PAYMENT_PROVIDERS_SEGMENT, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<ResponseDtoV1> getPaymentProviders() {
         return toResponse(new WalletPaymentProvidersResponseDtoV1(paymentProviders.activeIds()), CacheControl.noStore());
     }
 
+    /** Handles a local-demo card top-up; requires the configured synthetic card and exactly one nonblank idempotency key. */
     @LocalTopUpRoute
     @PostMapping(path = "/{id}/top-ups", consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)

@@ -8,6 +8,7 @@ import lombok.experimental.Accessors;
 
 import java.io.Serial;
 
+/** Carries a successful value or a structured failure across service boundaries. */
 @Data
 @Accessors(chain = true)
 @AllArgsConstructor
@@ -37,24 +38,28 @@ public class Outcome<S, E extends Error>
         return this.response;
     }
 
+    /** Creates an outcome carrying a successful value. */
     @SuppressWarnings("unchecked")
     public static <S, E extends Error> Outcome<S, E> success(S response) {
         assert response != null;
         return success(response, (Class<S>) response.getClass());
     }
 
+    /** Creates an outcome carrying a successful value. */
     public static <S, E extends Error> Outcome<S, E> success(S response, Class<S> responseClass) {
         return new Outcome<S, E>()
                 .setResponse(response)
                 .setResponseClass(responseClass);
     }
 
+    /** Creates an outcome carrying the supplied structured error. */
     @SuppressWarnings("unchecked")
     public static <S, E extends Error> Outcome<S, E> failure(E error) {
         assert error != null;
         return failure(error, (Class<E>) error.getClass());
     }
 
+    /** Creates an outcome carrying the supplied structured error. */
     public static <S, E extends Error> Outcome<S, E> failure(E error, Class<E> errorClass) {
         return new Outcome<S, E>()
                 .setError(error)

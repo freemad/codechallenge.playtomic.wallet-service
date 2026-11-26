@@ -15,6 +15,7 @@ import org.springframework.data.mongodb.core.mapping.MongoId;
 import java.io.Serial;
 import java.time.Instant;
 
+/** Stores a provider receipt keyed by provider payment identifier. */
 @Value
 @Accessors(chain = true)
 @RequiredArgsConstructor
@@ -36,6 +37,7 @@ public class WalletPaymentReceiptEntity implements IEntity<String> {
     @ToString.Exclude
     boolean newRecord;
 
+    /** Uses the provider payment identifier as the receipt document key. */
     @Override
     public String getId() {
         return providerPaymentId;

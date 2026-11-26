@@ -17,6 +17,7 @@ import org.springframework.data.mongodb.core.mapping.MongoId;
 import java.io.Serial;
 import java.math.BigDecimal;
 
+/** Stores the live wallet balance and the sequence and balance of its audit checkpoint. */
 @Value
 @Accessors(chain = true)
 @RequiredArgsConstructor

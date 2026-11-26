@@ -21,12 +21,14 @@ public enum SimulationOutcome {
     private final String operation;
     private final String result;
 
+    /** Logs the configured simulation outcome and returns the response unchanged. */
     public <T> T record(T response) {
         EVENTS.fields(Level.INFO, "simulation.result").addKeyValue("operation", operation)
                 .addKeyValue("result", result).log();
         return response;
     }
 
+    /** Records the simulation outcome when the response publisher emits a value. */
     public <T> Mono<T> observe(Mono<T> response) {
         return response.doOnNext(this::record);
     }

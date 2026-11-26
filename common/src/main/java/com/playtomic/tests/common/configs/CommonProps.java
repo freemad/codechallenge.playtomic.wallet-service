@@ -16,6 +16,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 
+/** Binds common application settings and their validation rules. */
 @Data
 @Validated
 @ConfigurationProperties(prefix = "application.common", ignoreUnknownFields = false)
@@ -37,6 +38,7 @@ public class CommonProps {
     @Valid
     private final Resilience resilience = new Resilience();
 
+    /** Groups HTTP settings shared across services. */
     @Data
     public static class Http {
         @Min(1)
@@ -47,6 +49,7 @@ public class CommonProps {
         private int maxInMemorySizeBytes = 256 * 1024;
     }
 
+    /** Constrains default and maximum page sizes. */
     @Data
     public static class Pagination {
         @Min(1)
@@ -55,6 +58,7 @@ public class CommonProps {
         @Max(1000)
         private int maxPageSize = 200;
 
+        /** Checks that the configured default page size fits within the maximum. */
         @AssertTrue(message = "default-page-size must not exceed max-page-size")
         public boolean isDefaultPageSizeWithinMaximum() {
             return defaultPageSize <= maxPageSize;
@@ -118,12 +122,14 @@ public class CommonProps {
         }
     }
 
+    /** Groups development-mode switches. */
     @Data
     public static class DevMode {
         private Boolean expWrapperEnabled;
         private Boolean debugMode;
     }
 
+    /** Groups authentication settings. */
     @Data
     public static class AuthInfo {
         private String host;
@@ -136,6 +142,7 @@ public class CommonProps {
         private String password;
     }
 
+    /** Holds the configured basic authentication credentials. */
     @Data
     public static class BasicAuthInfo {
         private String username;
@@ -144,6 +151,7 @@ public class CommonProps {
 
     }
 
+    /** Describes an upstream service connection. */
     @Data
     public static class UpstreamInfo {
         private String host;
@@ -152,12 +160,14 @@ public class CommonProps {
 
     }
 
+    /** Groups Infinispan cache settings. */
     @Data
     public static class Infinispan {
         private String clustered;
 
     }
 
+    /** Controls shared instrumentation settings. */
     @Data
     @Accessors(chain = true)
     public static class Observability {
@@ -165,6 +175,7 @@ public class CommonProps {
         private String metricNamePrefix = "";
     }
 
+    /** Groups circuit-breaker and concurrency-limiting policies. */
     @Data
     public static class Resilience {
         @Valid
@@ -172,6 +183,7 @@ public class CommonProps {
         @Valid
         private final Bulkhead bulkhead = new Bulkhead();
 
+        /** Configures the sampling window and thresholds used by a circuit breaker. */
         @Data
         @Accessors(chain = true)
         public static class CircuitBreaker {
@@ -185,12 +197,14 @@ public class CommonProps {
             @Min(1)
             private long openStateWaitMs = 60_000;
 
+            /** Checks that the circuit breaker can reach its minimum call count within one sampling window. */
             @AssertTrue(message = "minimum-number-of-calls must not exceed sliding-window-size")
             public boolean isMinimumNumberOfCallsWithinWindow() {
                 return minimumNumberOfCalls <= slidingWindowSize;
             }
         }
 
+        /** Limits concurrent work admitted by a bulkhead. */
         @Data
         @Accessors(chain = true)
         public static class Bulkhead {
@@ -199,6 +213,7 @@ public class CommonProps {
         }
     }
 
+    /** Configures client recovery behavior. */
     @Data
     @lombok.experimental.Accessors(chain = true)
     public static class ClientRecovery {
@@ -208,6 +223,7 @@ public class CommonProps {
         private int timeoutSeconds = 60;
     }
 
+    /** Groups database configuration shared by services. */
     @Data
     public static class Database {
         private String url;

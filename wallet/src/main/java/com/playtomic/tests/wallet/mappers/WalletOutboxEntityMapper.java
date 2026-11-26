@@ -9,17 +9,22 @@ import org.mapstruct.Mapping;
 import org.mapstruct.MappingConstants;
 import org.mapstruct.ReportingPolicy;
 
+/** Maps wallet outbox records between MongoDB and application representations. */
 @Mapper(componentModel = MappingConstants.ComponentModel.SPRING, unmappedTargetPolicy = ReportingPolicy.ERROR)
 public interface WalletOutboxEntityMapper extends IEntityToModelMapper<WalletOutboxEntity, WalletOutboxModel, String> {
+    /** Maps the supplied representation to its application model. */
     WalletOutboxModel toModel(WalletOutboxEntity entity);
 
+    /** Maps the application model to its persistence representation. */
     @Mapping(target = "newRecord", ignore = true)
     WalletOutboxEntity toEntity(WalletOutboxModel model);
 
+    /** Resolves the stored event value to the corresponding event type. */
     default WalletEventType toEventType(int value) {
         return WalletEventType.ofValue(value);
     }
 
+    /** Returns the storage representation of the wallet event type. */
     default int toEventTypeValue(WalletEventType eventType) {
         return eventType.getValue();
     }

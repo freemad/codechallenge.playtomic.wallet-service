@@ -20,6 +20,7 @@ class WalletJobLeaseMongoOperations implements IWalletJobLeaseMongoOperations {
 
     private final ReactiveMongoOperations mongo;
 
+    /** Attempts to obtain the job lease and returns the token when acquired. */
     @Override
     public Mono<String> acquire(String job, Instant now, Instant expiresAt, String token) {
         var expired = Query.query(Criteria.where("id").is(job).and(EXPIRES_AT).lte(now));

@@ -7,6 +7,7 @@ import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.UUID;
 
+/** Produces time-based UUIDv7 identifiers without coordinating callers. */
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class UuidV7Generator {
 

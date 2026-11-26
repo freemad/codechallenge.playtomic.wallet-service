@@ -3,6 +3,7 @@ package com.playtomic.tests.common.constants;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
+/** Shared keys used when assembling responses and error details. */
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public final class ResponseParam {
     public static final String ERROR_PARAMS_STACK = "stack";

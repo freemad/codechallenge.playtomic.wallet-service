@@ -19,6 +19,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 import static com.playtomic.tests.wallet.observability.WalletLogEvent.*;
 
+/** Publishes claimed wallet events and acknowledges them after Kafka acceptance. */
 @Component
 @EnableScheduling
 @ConditionalOnProperty(prefix = WalletOutboxProps.PREFIX, name = "enabled", havingValue = "true")
@@ -29,6 +30,7 @@ public class WalletOutboxRelay {
     private final WalletOutboxProps properties;
     private final Mono<String> indexReady;
 
+    /** Connects the wallet event outbox to its configured Kafka publisher. */
     public WalletOutboxRelay(WalletOutboxEntityService outbox, KafkaTemplate<String, String> kafka, JsonMapper json,
                              WalletOutboxProps properties) {
         this.outbox = outbox;
@@ -38,6 +40,7 @@ public class WalletOutboxRelay {
         this.indexReady = WalletWorkerParam.cacheSuccessfulIndex(Mono.defer(outbox::ensurePublishIndex));
     }
 
+    /** Publishes claimed wallet events to Kafka before acknowledging their delivery in MongoDB. */
     @Scheduled(fixedDelayString = "${" + WalletOutboxProps.PREFIX + ".interval}")
     public Mono<Void> publish() {
         return indexReady.thenMany(Flux.range(0, properties.getBatchSize())

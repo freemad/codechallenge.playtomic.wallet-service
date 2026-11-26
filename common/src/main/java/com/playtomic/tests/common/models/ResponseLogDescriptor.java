@@ -7,6 +7,7 @@ import lombok.experimental.Accessors;
 
 import java.io.Serial;
 
+/** Carries diagnostic context for logging a response. */
 @Data
 @Accessors(chain = true)
 @NoArgsConstructor

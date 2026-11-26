@@ -17,6 +17,7 @@ import java.util.Optional;
 
 import static com.playtomic.tests.common.utils.ExceptionNormalizer.normalize;
 
+/** Provides model-level access to wallet records. */
 @Service
 @RequiredArgsConstructor
 public class WalletEntityService implements IWalletEntityService<WalletModel, WalletEntity> {

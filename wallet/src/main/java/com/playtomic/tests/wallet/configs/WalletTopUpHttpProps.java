@@ -4,6 +4,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.core.env.Environment;
 import org.springframework.util.Assert;
 
+/** Controls exposure of the demo HTTP routes and the permitted synthetic card. */
 @ConfigurationProperties("wallet.top-up.http")
 public class WalletTopUpHttpProps {
     static final String DEMO_PROFILE = "local-top-up";
@@ -13,6 +14,7 @@ public class WalletTopUpHttpProps {
     private final boolean enabled;
     private final String syntheticCardNumber;
 
+    /** Binds the settings for wallet top up http. */
     public WalletTopUpHttpProps(boolean enabled, String syntheticCardNumber) {
         Assert.isTrue((!enabled && syntheticCardNumber == null)
                         || APPROVED_SYNTHETIC_CARD_NUMBER.equals(syntheticCardNumber),
@@ -21,6 +23,7 @@ public class WalletTopUpHttpProps {
         this.syntheticCardNumber = syntheticCardNumber;
     }
 
+    /** Checks the submitted number against the synthetic card allowed for the local demo. */
     public boolean acceptsCardNumber(String cardNumber) {
         return APPROVED_SYNTHETIC_CARD_NUMBER.equals(cardNumber) && cardNumber.equals(syntheticCardNumber);
     }

@@ -14,9 +14,11 @@ import java.util.List;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+/** Builds version-one response envelopes from service outcomes. */
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class ResponseMappingUtil {
 
+    /** Wraps a mapped result or the outcome's error in a correlated response. */
     public static <S, D extends IDto> ResponseDtoV1 toSingleResponseDtoV1(
             Outcome<S, Error> outcome,
             String correlationId,
@@ -24,6 +26,7 @@ public final class ResponseMappingUtil {
         return toResponse(outcome, correlationId, mapperFunction);
     }
 
+    /** Wraps mapped collection elements or the outcome's error in a correlated response. */
     public static <S, D extends IDto> ResponseDtoV1 toListResponseDtoV1(
             Outcome<List<S>, Error> outcome,
             String correlationId,
@@ -38,6 +41,7 @@ public final class ResponseMappingUtil {
         });
     }
 
+    /** Builds a correlated error response without a result payload. */
     public static ResponseDtoV1 toErrorResponseDtoV1(Error error, String correlationId) {
         return newResponse(correlationId).setError(mapError(error));
     }

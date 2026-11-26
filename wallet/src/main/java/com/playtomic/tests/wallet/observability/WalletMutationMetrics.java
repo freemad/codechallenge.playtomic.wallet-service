@@ -13,6 +13,7 @@ import java.util.Locale;
 
 import static com.playtomic.tests.wallet.enums.WalletOperationType.WALLET_OPERATION_TYPE_TOP_UP;
 
+/** Instruments wallet mutations and provider charges separately. */
 @Component
 public class WalletMutationMetrics {
     private static final String TOP_UP_OPERATION = "wallet.topup";
@@ -35,6 +36,7 @@ public class WalletMutationMetrics {
         this.charges = new ReactiveOperationMetrics(registry, CHARGE_OPERATION, settings);
     }
 
+    /** Measures a wallet mutation using its bounded operation-type label. */
     public Mono<WalletOperationModel> mutation(WalletOperationType type, Mono<WalletOperationModel> source) {
         String operationLabel = type.metricLabel();
         var timer = type == WALLET_OPERATION_TYPE_TOP_UP ? topUps : spending;
@@ -42,6 +44,7 @@ public class WalletMutationMetrics {
                 OPERATION_TAG, operationLabel, STATUS_TAG, result.getStatus().getName().toUpperCase(Locale.ROOT)).increment()));
     }
 
+    /** Measures the provider charge separately from the enclosing wallet mutation. */
     public Mono<PaymentReceiptModel> charge(Mono<PaymentReceiptModel> source) {
         return charges.measure(source);
     }

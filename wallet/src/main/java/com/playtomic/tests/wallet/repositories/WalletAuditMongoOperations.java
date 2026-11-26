@@ -24,18 +24,21 @@ import java.time.Instant;
 import java.util.Date;
 import static org.springframework.data.domain.Sort.Direction.ASC;
 
+/** Claims audit work and persists checkpoints, discrepancy evidence and alert delivery state. */
 @Repository
 @RequiredArgsConstructor
 public class WalletAuditMongoOperations {
     private static final String ALERTS = "wallet_audit_alert_outbox";
     private final ReactiveMongoOperations mongo;
 
+    /** Ensures the indexes used to claim cutoff audits and discrepancy alerts. */
     public Mono<String> indexes() {
         return mongo.indexOps(WalletPostingEntity.class).createIndex(new Index().on("walletId", ASC).on("sequence", ASC).unique())
                 .then(mongo.indexOps(WalletAuditScheduleEntity.class).createIndex(new Index().on("blocked", ASC).on("nextCutoff", ASC)))
                 .then(mongo.indexOps(ALERTS).createIndex(new Index().on("publishedAt", ASC).on("availableAt", ASC)));
     }
 
+    /** Leases one due, unblocked audit period. */
     public Mono<WalletAuditScheduleEntity> claim(Instant now, Duration lease) {
         var query = Query.query(Criteria.where("blocked").is(false).and("nextCutoff").lte(now).and("availableAt").lte(now))
                 .with(Sort.by("nextCutoff", "id"));
@@ -55,6 +58,7 @@ public class WalletAuditMongoOperations {
         });
     }
 
+    /** Streams ledger postings in sequence order after the opening checkpoint through the inclusive upper sequence. */
     public Flux<WalletPostingEntity> postings(WalletAuditScheduleEntity claim, long through) {
         return mongo.find(Query.query(Criteria.where("walletId").is(claim.getId()).and("sequence")
                 .gt(claim.getOpeningSequence()).lte(through)).with(Sort.by("sequence")), WalletPostingEntity.class);
@@ -69,6 +73,7 @@ public class WalletAuditMongoOperations {
         return mongo.updateFirst(Query.query(criteria), next, WalletAuditScheduleEntity.class).map(r -> r.getModifiedCount() == 1);
     }
 
+    /** Records the audited balance and sequence without replacing the wallet's live balance. */
     public Mono<Void> checkpoint(WalletAuditScheduleEntity claim, long sequence, BigDecimal balance, Instant now) {
         return mongo.updateFirst(Query.query(Criteria.where("id").is(claim.getId())), new Update()
                 .set("auditedLedgerSequence", sequence).set("calculatedBalance", new Decimal128(balance))
@@ -76,6 +81,7 @@ public class WalletAuditMongoOperations {
                 .flatMap(r -> r.getMatchedCount() == 1 ? Mono.empty() : Mono.error(new IllegalStateException("Missing audit wallet")));
     }
 
+    /** Persists discrepancy evidence and queues its alert rather than repairing the live balance. */
     public Mono<Void> discrepancy(WalletAuditScheduleEntity claim, WalletEntity snapshot, BigDecimal calculated, boolean continuous, Instant now) {
         var eventId = UuidV7Generator.generate().toString();
         var evidence = new Document("_id", eventId).append("walletId", claim.getId()).append("currency", claim.getCurrency())
@@ -87,11 +93,13 @@ public class WalletAuditMongoOperations {
         return mongo.insert(evidence, "wallet_balance_audit").then(mongo.insert(alert, ALERTS)).then();
     }
 
+    /** Leases an unpublished discrepancy alert for delivery. */
     public Mono<Document> claimAlert(Instant now, Duration lease) {
         return mongo.findAndModify(Query.query(Criteria.where("publishedAt").isNull().and("availableAt").lte(now))
                         .with(Sort.by("availableAt")), claimUpdate(now, lease), FindAndModifyOptions.options().returnNew(true), Document.class, ALERTS);
     }
 
+    /** Marks the claimed discrepancy alert published only when the lease token matches. */
     public Mono<Void> acknowledge(Document claim) {
         return mongo.updateFirst(Query.query(Criteria.where("_id").is(claim.getString("_id")).and("token").is(claim.getString("token"))),
                 new Update().currentDate("publishedAt").unset("token"), ALERTS).then();

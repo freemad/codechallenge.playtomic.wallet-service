@@ -3,6 +3,7 @@ package com.playtomic.tests.common.constants;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
+/** Allocates numeric error codes across application components. */
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class ErrorCode {
     public static final int PLAYTOMIC_TESTS_ERROR_CODE_PREFIX = 11000;

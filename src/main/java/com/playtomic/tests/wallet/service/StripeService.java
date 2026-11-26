@@ -30,6 +30,7 @@ public class StripeService {
     @NonNull
     private RestTemplate restTemplate;
 
+    /** Configures the legacy HTTP client with its charge and refund endpoints. */
     public StripeService(@Value("${stripe.simulator.charges-uri}") @NonNull URI chargesUri,
                          @Value("${stripe.simulator.refunds-uri}") @NonNull URI refundsUri,
                          @NonNull RestTemplateBuilder restTemplateBuilder) {

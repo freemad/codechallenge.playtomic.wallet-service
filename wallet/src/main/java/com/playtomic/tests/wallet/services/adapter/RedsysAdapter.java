@@ -32,6 +32,7 @@ public final class RedsysAdapter {
     private final RedsysClient client;
     private final JsonMapper json;
 
+    /** Builds a Redsys authorization for the order and interprets the payment result. */
     public Mono<ProviderPaymentResult> authorize(String order, BigDecimal amount) {
         return Mono.defer(() -> {
             if (order == null || !ORDER.matcher(order).matches()) {

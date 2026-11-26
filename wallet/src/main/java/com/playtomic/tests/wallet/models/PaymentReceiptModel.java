@@ -5,6 +5,7 @@ import lombok.Value;
 
 import java.io.Serial;
 
+/** Identifies a charge accepted by the payment provider. */
 @Value
 public class PaymentReceiptModel implements IModel {
     @Serial
@@ -12,6 +13,7 @@ public class PaymentReceiptModel implements IModel {
 
     String id;
 
+    /** Identifies the receipt returned for an accepted charge. */
     public PaymentReceiptModel(String id) {
         if (id == null || id.isBlank()) {
             throw new IllegalArgumentException("Provider payment ID is required");

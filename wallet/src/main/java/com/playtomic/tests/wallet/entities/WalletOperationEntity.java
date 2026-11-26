@@ -20,6 +20,7 @@ import java.io.Serial;
 import java.math.BigDecimal;
 import java.time.Instant;
 
+/** Stores the durable request identity, status and result of a wallet mutation. */
 @Value
 @Accessors(chain = true)
 @RequiredArgsConstructor

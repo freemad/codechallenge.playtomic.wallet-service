@@ -3,6 +3,7 @@ package com.playtomic.tests.common.constants;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
+/** Constants shared by the application modules. */
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class CommonParam {
     public static final short ENUM_UNSPECIFIED_VALUE = 0;

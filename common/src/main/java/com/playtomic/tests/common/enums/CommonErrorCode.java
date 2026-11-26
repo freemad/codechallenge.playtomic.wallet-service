@@ -10,6 +10,7 @@ import java.util.Arrays;
 import static com.playtomic.tests.common.constants.ErrorCode.INITIAL_ERROR_CODE_COMMON;
 
 
+/** Identifies failures that are not specific to a wallet operation. */
 @Getter
 @AllArgsConstructor
 public enum CommonErrorCode
@@ -73,6 +74,7 @@ public enum CommonErrorCode
         return candidate;
     }
 
+    /** Looks up the application error by numeric code, rejecting unknown codes. */
     public static CommonErrorCode ofCode(int code) {
         return Arrays.stream(CommonErrorCode.values())
                 .filter(ec -> ec.getCode() == code)
@@ -80,6 +82,7 @@ public enum CommonErrorCode
                 .orElseThrow(() -> invalid("unknown CommonErrorCode! code: " + code));
     }
 
+    /** Looks up the application error by its message, rejecting unknown messages. */
     public static CommonErrorCode ofMessage(String message) {
         return Arrays.stream(CommonErrorCode.values())
                 .filter(ec -> ec.getMessage().equals(message))

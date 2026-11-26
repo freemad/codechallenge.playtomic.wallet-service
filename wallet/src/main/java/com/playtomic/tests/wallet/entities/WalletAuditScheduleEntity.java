@@ -18,6 +18,7 @@ import java.io.Serial;
 import java.math.BigDecimal;
 import java.time.Instant;
 
+/** Tracks a wallet's next audit cutoff, opening checkpoint and worker claim. */
 @Value
 @RequiredArgsConstructor
 @Document("wallet_audit_schedule")

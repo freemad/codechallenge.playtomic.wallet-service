@@ -41,6 +41,7 @@ public class PayPalSimulationController {
     // Keep captured orders until restart so a replay can never create another capture.
     private final Semaphore capacity = new Semaphore(MAX_ORDERS);
 
+    /** Validates the order request and returns the configured fixture response. */
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Map<String, ?>> create(@RequestBody JsonNode request) {
         var units = request.path("purchase_units");
@@ -66,6 +67,7 @@ public class PayPalSimulationController {
         return ORDER_CREATED.record(ResponseEntity.status(HttpStatus.CREATED).body(Map.of("id", id, "status", "APPROVED")));
     }
 
+    /** Simulates capture of the identified PayPal order. */
     @PostMapping("/{orderId}/capture")
     public Mono<ResponseEntity<Map<String, ?>>> capture(@PathVariable String orderId) {
         var order = orders.get(orderId);

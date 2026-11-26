@@ -60,6 +60,7 @@ public class WalletOperationService {
         }
     }
 
+    /** Looks up the recorded operation, representing absence as an empty optional result. */
     public Mono<Outcome<Optional<WalletOperationModel>, Error>> find(String id) {
         return WalletOutcome.optional(operationEntityService.findById(id));
     }
@@ -69,11 +70,13 @@ public class WalletOperationService {
         return WalletOutcome.optional(operationEntityService.insertIfAbsent(request));
     }
 
+    /** Records the provider outcome for an operation in its expected payment state. */
     public Mono<Outcome<Optional<WalletOperationModel>, Error>> markPaymentOutcome(String id,
                                                                                    WalletOperationStatus outcome) {
         return WalletOutcome.optional(markPaymentStatus(id, outcome));
     }
 
+    /** Records provider acceptance and its receipt transactionally before local crediting. */
     public Mono<Outcome<Optional<WalletOperationModel>, Error>> recordReceipt(String id, String providerPaymentId) {
         return WalletOutcome.optional(walletTransactions.execute(Mono.defer(() ->
                 operationEntityService.transitionTopUp(id, WALLET_OPERATION_STATUS_RECEIPT_RECORDED,

@@ -16,11 +16,13 @@ import reactor.core.publisher.Mono;
 @Service
 public class WalletOutcomeHandler {
 
+    /** Produces a wallet lookup outcome, treating an empty result as a missing wallet. */
     public Mono<Outcome<WalletModel, Error>> lookup(Mono<WalletModel> result) {
         return prepare(result).switchIfEmpty(Mono.fromSupplier(() ->
                 Outcome.failure(new WalletNotFoundException().toError())));
     }
 
+    /** Converts a mutation result or failure into the outcome returned to wallet callers. */
     public Mono<Outcome<WalletOperationModel, Error>> mutation(Mono<WalletOperationModel> result) {
         // A returned operation is result data even when its status is rejection or requires review.
         return prepare(result).doOnNext(outcome -> {

@@ -18,16 +18,19 @@ import reactor.core.publisher.Mono;
 
 import java.util.concurrent.TimeoutException;
 
+/** Calls the configured charge and refund endpoints and interprets Stripe responses. */
 @Component
 public class StripeClient {
     private final WalletPaymentProviderProps.Provider settings;
     private final WebClient webClient;
 
+    /** Uses the supplied HTTP client and configured provider endpoints for Stripe requests. */
     public StripeClient(WalletPaymentProviderProps props, @Qualifier("stripeWebClient") WebClient webClient) {
         this.settings = props.provider(WalletPaymentProviderProps.STRIPE);
         this.webClient = webClient;
     }
 
+    /** Submits the charge; a confirmed HTTP 422 rejection is distinct from an uncertain transport failure. */
     public Mono<ChargeReceiptDto> charge(ChargeRequestDto request) {
         return Mono.defer(() -> webClient.post()
                         .uri(settings.getChargesUri())
@@ -41,6 +44,7 @@ public class StripeClient {
                 .transform(this::withRequestTimeout);
     }
 
+    /** Requests a refund for a provider payment, not a return of a wallet purchase. */
     public Mono<Void> refund(RefundRequestDto request) {
         return Mono.defer(() -> {
                     var uri = UriComponentsBuilder.fromUriString(settings.getRefundsUri())

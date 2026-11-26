@@ -10,6 +10,7 @@ import java.io.Serial;
 import java.math.BigDecimal;
 import java.time.Instant;
 
+/** Version-one payload describing a wallet balance event. */
 @Data
 @Accessors(chain = true)
 @JsonIgnoreProperties({"type", "version"})
