@@ -12,6 +12,13 @@ spring.kafka.producer:
     delivery.timeout.ms: 15000
     request.timeout.ms: 10000
 wallet:
+  audit:
+    enabled: false
+    interval: 10s
+    lease: 1m
+    timeout: 40s
+    batch-size: 25
+    topic: wallet.audit.alerts.v1
   top-up:
     http:
       enabled: false

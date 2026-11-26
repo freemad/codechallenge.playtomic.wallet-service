@@ -415,6 +415,8 @@ class WalletApplicationIT {
                         .then(operations.apply(id)))
                 .expectError(org.springframework.dao.DuplicateKeyException.class).verify(DEADLINE);
         assertThat(output.getOut()).contains("\"event\":\"receipt.committed\"").doesNotContain("\"event\":\"operation.finalized\"");
+        Query postings = Query.query(Criteria.where("walletId").is("receipt-recovery"));
+        StepVerifier.create(mongo.count(postings, "wallet_ledger")).expectNext(0L).verifyComplete();
         StepVerifier.create(operations.find(id).map(WalletApplicationIT::presentResult)
                 .zipWith(wallets.findById("receipt-recovery").map(WalletApplicationIT::successfulResult)))
                 .assertNext(pair -> {
@@ -426,6 +428,11 @@ class WalletApplicationIT {
                 .assertNext(result -> {
                     assertThat(result.getStatus()).isEqualTo(WALLET_OPERATION_STATUS_SUCCEEDED);
                     assertThat(result.getResultingBalance()).isEqualByComparingTo("6.00");
+                }).expectComplete().verify(DEADLINE);
+        StepVerifier.create(mongo.find(postings, Document.class, "wallet_ledger").single())
+                .assertNext(row -> {
+                    assertThat(row.getLong("sequence")).isEqualTo(1L);
+                    assertThat(row.get("delta", Decimal128.class).bigDecimalValue()).isEqualByComparingTo("2.00");
                 }).expectComplete().verify(DEADLINE);
         verifyNoInteractions(stripe);
     }
