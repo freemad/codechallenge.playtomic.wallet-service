@@ -1,0 +1,37 @@
+sources:
+  services:
+    type: socket
+    mode: tcp
+    address: 0.0.0.0:5044
+    tls:
+      enabled: true
+      crt_file: /tls/server.crt
+      key_file: /tls/server.key
+    framing:
+      method: newline_delimited
+      newline_delimited: {max_length: 65536}
+    decoding: {codec: json}
+
+transforms:
+  diagnostic:
+    type: remap
+    inputs: [services]
+    drop_on_abort: true
+    drop_on_error: true
+    source: |
+      if !includes(["wallet.events", "simulator.events"], .logger_name) || !is_string(.event) { abort }
+      safe = {"@timestamp": parse_timestamp!(string!(.@timestamp), format: "%+"), "event": .event, "logger_name": .logger_name}
+      for_each(["level", "operationType", "status", "operation", "result", "errorCode", "attempt", "httpStatus", "durationMs"]) -> |_i, field| {
+        value = get!(., [field])
+        if is_string(value) || is_integer(value) || is_float(value) { safe = set!(safe, [field], value) }
+      }
+      . = safe
+
+sinks:
+  logs:
+    type: kafka
+    inputs: [diagnostic]
+    bootstrap_servers: kafka:9092
+    topic: service.logs.v1
+    encoding: {codec: json}
+    librdkafka_options: {acks: all}

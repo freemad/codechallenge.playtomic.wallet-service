@@ -1,0 +1,144 @@
+# Local-only overlay; see docs/wallet-logging.md. Only wallet HTTP is host-published.
+x-connect: &connect
+  image: wallet-log-connect:local
+  build: ./log-connect
+services:
+  kafka:
+    image: apache/kafka:4.0.0
+    networks: [elastic-backend]
+    environment:
+      KAFKA_NODE_ID: '1'
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: '1'
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'false'
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_HEAP_OPTS: -Xms128m -Xmx256m
+    volumes: [log-kafka-data:/var/lib/kafka/data]
+    healthcheck:
+      test: [CMD-SHELL, '/opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list >/dev/null']
+      interval: 10s
+      timeout: 10s
+      retries: 30
+  log-topic:
+    image: apache/kafka:4.0.0
+    networks: [elastic-backend]
+    depends_on:
+      kafka: {condition: service_healthy}
+    entrypoint: [/opt/kafka/bin/kafka-topics.sh]
+    command: [--bootstrap-server, 'kafka:9092', --create, --if-not-exists, --topic, service.logs.v1, --partitions, '1', --replication-factor, '1', --config, retention.ms=604800000]
+  connect:
+    <<: *connect
+    networks: [elastic-backend]
+    depends_on:
+      log-topic: {condition: service_completed_successfully}
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: kafka:9092
+      CONNECT_REST_ADVERTISED_HOST_NAME: connect
+      CONNECT_GROUP_ID: diagnostic-connect
+      CONNECT_CONFIG_STORAGE_TOPIC: diagnostic-connect-config
+      CONNECT_OFFSET_STORAGE_TOPIC: diagnostic-connect-offsets
+      CONNECT_STATUS_STORAGE_TOPIC: diagnostic-connect-status
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: '1'
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: '1'
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: '1'
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.storage.StringConverter
+      CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: 'false'
+      CONNECT_PLUGIN_PATH: /usr/share/java,/usr/share/confluent-hub-components
+      CONNECT_CONFIG_PROVIDERS: env
+      CONNECT_CONFIG_PROVIDERS_ENV_CLASS: org.apache.kafka.common.config.provider.EnvVarConfigProvider
+      CONNECT_CONFIG_PROVIDERS_ENV_PARAM_ALLOWLIST_PATTERN: ELASTIC_PASSWORD
+      ELASTIC_PASSWORD: ${ELASTIC_PASSWORD:?set a local Elasticsearch password}
+      KAFKA_HEAP_OPTS: -Xms128m -Xmx384m
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS localhost:8083/connector-plugins | grep -q io.confluent.connect.elasticsearch.ElasticsearchSinkConnector']
+      interval: 10s
+      timeout: 5s
+      retries: 30
+  register-sink:
+    <<: *connect
+    networks: [elastic-backend]
+    volumes: ['./log-connect/sink.json:/config/sink.json:ro']
+    depends_on:
+      connect: {condition: service_healthy}
+      elasticsearch: {condition: service_healthy}
+    entrypoint: [curl, -fsS, --retry, '10', --retry-all-errors, -o, /dev/null, -X, PUT, -H, 'Content-Type: application/json', --data-binary, '@/config/sink.json', 'http://connect:8083/connectors/service-logs/config']
+  elasticsearch:
+    image: elasticsearch:8.19.26
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: 'true'
+      xpack.security.http.ssl.enabled: 'false'
+      xpack.security.autoconfiguration.enabled: 'false'
+      ELASTIC_PASSWORD: ${ELASTIC_PASSWORD:?set a local Elasticsearch password}
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+    networks: [elastic-backend]
+    volumes: [elastic-data:/usr/share/elasticsearch/data]
+    healthcheck:
+      test: [CMD-SHELL, 'curl -fsS -u "elastic:$$ELASTIC_PASSWORD" http://localhost:9200/_cluster/health >/dev/null']
+      interval: 10s
+      timeout: 5s
+      retries: 30
+  collector-tls:
+    image: eclipse-temurin:25-jre-noble
+    user: '0'
+    network_mode: none
+    environment:
+      COLLECTOR_KEYSTORE_PASSWORD: ${COLLECTOR_KEYSTORE_PASSWORD:?set a local keystore password}
+    volumes: [collector-key:/tls, collector-trust:/trust]
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - |
+        umask 077
+        if [ ! -s /tls/server.p12 ]; then
+          keytool -genkeypair -alias collector -keyalg RSA -keysize 3072 -validity 365 -dname CN=elastic-collector -ext SAN=dns:elastic-collector -storetype PKCS12 -keystore /tls/new.p12 -storepass:env COLLECTOR_KEYSTORE_PASSWORD
+          mv /tls/new.p12 /tls/server.p12
+        fi
+        keytool -exportcert -alias collector -keystore /tls/server.p12 -storepass:env COLLECTOR_KEYSTORE_PASSWORD -file /tmp/collector.crt
+        cp "$$JAVA_HOME/lib/security/cacerts" /trust/new.jks
+        keytool -importcert -noprompt -alias wallet-local-collector -file /tmp/collector.crt -keystore /trust/new.jks -storepass changeit
+        chmod 444 /trust/new.jks
+        mv /trust/new.jks /trust/cacerts
+        chown 10001 /tls/server.p12
+        openssl pkcs12 -in /tls/server.p12 -passin env:COLLECTOR_KEYSTORE_PASSWORD -nocerts -nodes -out /tls/server.key
+        openssl x509 -inform DER -in /tmp/collector.crt -out /tls/server.crt
+        chown 10001 /tls/server.key /tls/server.crt
+  elastic-collector:
+    image: timberio/vector:0.49.0-debian
+    user: '10001'
+    depends_on:
+      collector-tls: {condition: service_completed_successfully}
+      log-topic: {condition: service_completed_successfully}
+    networks: [default, elastic-backend]
+    volumes: [collector-key:/tls:ro, './vector.yaml:/etc/vector/vector.yaml:ro']
+  wallet:
+    depends_on:
+      collector-tls: {condition: service_completed_successfully}
+    volumes: [collector-trust:/trust:ro]
+    environment:
+      SPRING_PROFILES_INCLUDE: log-elastic
+      WALLET_LOG_ELASTIC_DESTINATION: elastic-collector:5044
+      SPRING_PROFILES_ACTIVE: ${WALLET_SPRING_PROFILES:-develop}
+      JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/trust/cacerts
+      LOGGING_LEVEL_WALLET_EVENTS: ${LOGGING_LEVEL_WALLET_EVENTS:-INFO}
+  simulator:
+    depends_on:
+      collector-tls: {condition: service_completed_successfully}
+    volumes: [collector-trust:/trust:ro]
+    environment:
+      SPRING_PROFILES_INCLUDE: log-elastic
+      SIMULATOR_LOG_ELASTIC_DESTINATION: elastic-collector:5044
+      JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/trust/cacerts
+volumes:
+  log-kafka-data:
+  elastic-data:
+  collector-key:
+  collector-trust:
+networks:
+  elastic-backend: {internal: true}

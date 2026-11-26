@@ -24,9 +24,31 @@ Logs are for diagnosis, not a ledger or audit history. Use the existing Micromet
 Stdout stays enabled. Append `log-file`, `log-elastic`, or both to the existing `SPRING_PROFILES_ACTIVE` list (for example, `local-top-up,log-file,log-elastic`). Neither optional destination is initialized by default. Both receive the same Logstash JSON and levels as stdout.
 
 - **File:** `WALLET_LOG_FILE` selects the active file (default `logs/wallet.log`). Use a private directory writable by the wallet process; mount it if container logs must survive replacement. Files roll daily or at 20 MB and are compressed; archives retain up to seven days with a 200 MB total cap.
-- **Elastic via Logstash:** Set `WALLET_LOG_ELASTIC_DESTINATION` to the collector's `host:port` (default `localhost:5044`). Configure a Logstash **TCP input** with TLS and the `json_lines` codec, not a Beats input or the Elasticsearch HTTP API. The collector certificate must match the hostname and chain to a JVM-trusted CA. Configure Elasticsearch credentials, index routing and retention at the collector, not in the wallet.
+- **Elastic forwarding:** Set `WALLET_LOG_ELASTIC_DESTINATION` to the collector's `host:port` (default `localhost:5044`). The receiver must accept TLS TCP JSON lines, not Beats or Elasticsearch HTTP. The collector certificate must match the hostname and chain to a JVM-trusted CA.
 
 Both optional appenders use bounded asynchronous buffers and can drop records under load or during outages. Avoid collecting the same stream again from stdout or disk when TCP forwarding is active.
+
+## Local Kafka Connect → Elasticsearch with Compose
+
+Wallet and simulator send TLS JSON lines to Vector. It filters for `wallet.events` and `simulator.events` and allowlists fields **before** producing to `service.logs.v1`: framework logs, raw messages and request/operation IDs are not forwarded. Kafka Connect `8.1.0` consumes that topic and writes to the `service.logs.v1` index on Elasticsearch `8.19.26`. The worker image adds Confluent’s Elasticsearch sink `15.1.5` (Confluent Community License) at build time. No Schema Registry or Spring Elasticsearch client is needed. Actuator remains in the services; service metrics are not exported to Elasticsearch.
+
+From the repository root, set two private passwords once per stack; keep them for subsequent starts with the same volumes:
+
+```sh
+export ELASTIC_PASSWORD=$(openssl rand -hex 24) COLLECTOR_KEYSTORE_PASSWORD=$(openssl rand -hex 24)
+stack() { docker compose -f deployment/compose.yaml -f deployment/compose.elastic.yaml "$@"; }
+export LOGGING_LEVEL_WALLET_EVENTS=DEBUG # optional: include successful HTTP responses
+stack up -d --build
+stack exec connect curl -fsS localhost:8083/connectors/service-logs/status
+curl -fsS http://127.0.0.1:8090/api/v1/wallets/log
+stack exec elasticsearch sh -c 'curl -fsS -u "elastic:$ELASTIC_PASSWORD" "http://localhost:9200/service.logs.v1/_search?q=event:http.response"'
+stack exec kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server kafka:9092 --describe --group connect-service-logs
+stack down
+```
+
+Check **both** connector and task state (`RUNNING`) and watch consumer lag. If Elasticsearch stops, Kafka retains accepted records (seven days by default). After fixing a prolonged outage, restart failed tasks with `stack exec connect curl -fsS -X POST 'localhost:8083/connectors/service-logs/restart?includeTasks=true&onlyFailed=true'`. Connect resumes from committed offsets; document IDs derive from topic, partition and offset so retries of a Kafka record do not create extra documents. Events can still be lost before broker acknowledgment. Neither the wallet outbox nor `wallet.audit.alerts.v1` is enabled or consumed by this stack.
+
+This is a **single-broker local demo**. Kafka, Connect REST and authenticated Elasticsearch HTTP are not host-published; backend traffic is plaintext and the sink uses the `elastic` account. Production needs replication, TLS/authentication, scoped credentials, certificate rotation, access controls, index retention and disk/lag alerts. `stack down` retains keys, logs and offsets; do not use `down -v` on a stack with wallet data you need. `sh deployment/test-elastic.sh` uses a disposable project: it reads a real wallet event from Kafka while Elasticsearch is stopped, then checks for the same document after restart.
 
 ## Simulator and other WebFlux modules
 
