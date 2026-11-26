@@ -6,6 +6,7 @@ import lombok.Getter;
 
 import java.io.Serial;
 
+/** Identifies the reason a wallet mutation cannot proceed. */
 @Getter
 public class WalletMutationException extends BusinessException {
     @Serial
@@ -13,11 +14,13 @@ public class WalletMutationException extends BusinessException {
 
     private final Reason reason;
 
+    /** Creates an exception reporting the reason the mutation failed. */
     public WalletMutationException(Reason reason, String message) {
         super(reason.code, reason == Reason.INVALID_REQUEST ? message : "");
         this.reason = reason;
     }
 
+    /** Distinguishes failure conditions during wallet mutation. */
     public enum Reason {
         INVALID_REQUEST(WalletErrorCode.INVALID_REQUEST),
         CURRENCY_MISMATCH(WalletErrorCode.CURRENCY_MISMATCH),

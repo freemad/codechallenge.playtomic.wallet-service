@@ -9,6 +9,7 @@ import lombok.experimental.Accessors;
 import java.io.Serial;
 import java.math.BigDecimal;
 
+/** Version-one wallet lookup result containing identity, balance and currency. */
 @Data
 @Accessors(chain = true)
 @AllArgsConstructor

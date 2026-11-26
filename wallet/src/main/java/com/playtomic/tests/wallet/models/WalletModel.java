@@ -8,6 +8,7 @@ import lombok.experimental.Accessors;
 import java.io.Serial;
 import java.math.BigDecimal;
 
+/** Represents a wallet and its balance outside the persistence layer. */
 @Value
 @Accessors(chain = true)
 public class WalletModel implements IModel {
@@ -20,6 +21,7 @@ public class WalletModel implements IModel {
 
     String currency;
 
+    /** Creates a wallet model with the given identity, balance and currency. */
     public WalletModel(String id, @NonNull BigDecimal balance, String currency) {
         if (id == null || id.isBlank()) {
             throw new IllegalArgumentException("Wallet ID is required");

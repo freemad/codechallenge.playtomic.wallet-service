@@ -6,6 +6,7 @@ import org.springframework.web.client.DefaultResponseErrorHandler;
 
 import java.io.IOException;
 
+/** Interprets unsuccessful HTTP responses from the legacy Stripe simulator. */
 public class StripeRestTemplateResponseErrorHandler extends DefaultResponseErrorHandler {
 
     @Override

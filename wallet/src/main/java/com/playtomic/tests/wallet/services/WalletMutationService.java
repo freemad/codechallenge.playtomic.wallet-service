@@ -31,6 +31,7 @@ import static com.playtomic.tests.wallet.enums.WalletOperationType.WALLET_OPERAT
 import static com.playtomic.tests.wallet.exceptions.WalletMutationException.Reason.*;
 import static com.playtomic.tests.wallet.observability.WalletLogEvent.*;
 
+/** Coordinates idempotent wallet mutations and separates provider dispatch from transactional balance changes. */
 @Service
 @RequiredArgsConstructor
 public class WalletMutationService {
@@ -44,11 +45,13 @@ public class WalletMutationService {
     private final WalletOutcomeHandler outcomeHandler;
     private final WalletTopUpProviders paymentProviders;
 
+    /** Requests an idempotent top-up through Stripe; only the reservation winner dispatches a charge. */
     public Mono<Outcome<WalletOperationModel, Error>> topUp(String walletId, String key, BigDecimal amount,
                                                              String currency, String creditCardNumber) {
         return topUp(walletId, key, amount, currency, STRIPE, creditCardNumber);
     }
 
+    /** Requests an idempotent top-up through the selected provider; only the reservation winner dispatches a charge. */
     public Mono<Outcome<WalletOperationModel, Error>> topUp(String walletId, String key, BigDecimal amount,
                                                              String currency, String provider, String creditCardNumber) {
         return outcomeHandler.mutation(metrics.mutation(WALLET_OPERATION_TYPE_TOP_UP, Mono.defer(() -> {
@@ -63,6 +66,7 @@ public class WalletMutationService {
         })));
     }
 
+    /** Debits an affordable amount once per operation key; replay returns the recorded outcome. */
     public Mono<Outcome<WalletOperationModel, Error>> spend(String walletId, String key, BigDecimal amount,
                                                              String currency) {
         return outcomeHandler.mutation(metrics.mutation(WALLET_OPERATION_TYPE_SPEND, Mono.defer(() ->

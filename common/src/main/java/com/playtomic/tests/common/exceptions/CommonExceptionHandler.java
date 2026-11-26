@@ -15,10 +15,12 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.Exceptions;
 
+/** Converts exceptions escaping REST controllers into shared error responses. */
 @Slf4j
 @RestControllerAdvice
 public class CommonExceptionHandler {
 
+    /** Converts an exception escaping a controller into the shared HTTP error response. */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ResponseDtoV1> handleException(Exception exception, ServerWebExchange exchange) throws Exception {
         if (ExceptionNormalizer.isControlFlow(exception) || exchange.getResponse().isCommitted()) {

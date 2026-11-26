@@ -15,6 +15,7 @@ import org.springframework.data.mongodb.core.mapping.MongoId;
 import java.io.Serial;
 import java.time.Instant;
 
+/** Stores the token and expiration that fence worker access to a job. */
 @Value
 @Accessors(chain = true)
 @RequiredArgsConstructor

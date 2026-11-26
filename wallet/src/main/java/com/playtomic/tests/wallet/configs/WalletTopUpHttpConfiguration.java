@@ -16,6 +16,7 @@ import java.lang.reflect.Method;
 /** Keeps unauthenticated local-demo handlers out of the routing table by default. */
 @Configuration(proxyBeanMethods = false)
 public class WalletTopUpHttpConfiguration {
+    /** Marks handlers registered only when local top-up HTTP access is enabled. */
     @Target(ElementType.METHOD)
     @Retention(RetentionPolicy.RUNTIME)
     public @interface LocalTopUpRoute {
@@ -28,6 +29,7 @@ public class WalletTopUpHttpConfiguration {
             WalletTopUpHttpProps.requireApprovedExposure(environment);
         }
         return new WebFluxRegistrations() {
+            /** Creates the handler mapping that omits disabled local top-up routes. */
             @Override
             public RequestMappingHandlerMapping getRequestMappingHandlerMapping() {
                 return new RequestMappingHandlerMapping() {

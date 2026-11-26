@@ -31,10 +31,12 @@ public enum WalletLogEvent {
 
     public static final StructuredEvents EVENTS = new StructuredEvents("wallet");
 
+    /** Starts a structured log entry with the service, event and severity fields. */
     public LoggingEventBuilder fields() {
         return EVENTS.fields(level, event);
     }
 
+    /** Adds the derived operation identifier to the structured event fields. */
     public LoggingEventBuilder operation(String derivedId) {
         var fields = fields();
         if (derivedId != null && OPERATION_ID.matcher(derivedId).matches()) {

@@ -28,6 +28,7 @@ public class StripeSimulationController {
 
     private final SimulatorProps properties;
 
+    /** Checks the card and amount before returning the configured simulated charge outcome. */
     @PostMapping(path = "/v1/stripe-simulator/charges", consumes = MediaType.APPLICATION_JSON_VALUE)
     public Mono<ResponseEntity<Receipt>> charge(@RequestBody ChargeRequest request) {
         if (request.getCreditCard() == null || request.getCreditCard().isBlank()

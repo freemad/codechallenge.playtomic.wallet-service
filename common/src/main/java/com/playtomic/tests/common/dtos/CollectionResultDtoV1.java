@@ -7,6 +7,7 @@ import lombok.experimental.Accessors;
 import java.io.Serial;
 import java.util.List;
 
+/** Wraps a collection as a version-one response result. */
 @Data
 @Accessors(chain = true)
 public class CollectionResultDtoV1<T> implements IDto {

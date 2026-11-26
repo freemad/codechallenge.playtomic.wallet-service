@@ -40,6 +40,7 @@ public class RedsysSimulationController {
     private final SimulatorProps properties;
     private final JsonMapper json;
 
+    /** Validates the Redsys envelope and returns the configured simulated authorization outcome. */
     @PostMapping(path = "/v1/redsys-simulator/sis/rest/trataPeticion", consumes = MediaType.APPLICATION_JSON_VALUE)
     public Mono<ResponseEntity<Map<String, String>>> authorize(@RequestBody JsonNode envelope) {
         String encoded = text(envelope, PARAMETERS);

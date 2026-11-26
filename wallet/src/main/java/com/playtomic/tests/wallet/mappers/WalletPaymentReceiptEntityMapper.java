@@ -8,10 +8,13 @@ import org.mapstruct.Mapping;
 import org.mapstruct.MappingConstants;
 import org.mapstruct.ReportingPolicy;
 
+/** Maps wallet payment receipt records between MongoDB and application representations. */
 @Mapper(componentModel = MappingConstants.ComponentModel.SPRING, unmappedTargetPolicy = ReportingPolicy.ERROR)
 public interface WalletPaymentReceiptEntityMapper extends IEntityToModelMapper<WalletPaymentReceiptEntity, WalletPaymentReceiptModel, String> {
+    /** Maps the supplied representation to its application model. */
     WalletPaymentReceiptModel toModel(WalletPaymentReceiptEntity entity);
 
+    /** Maps the application model to its persistence representation. */
     @Mapping(target = "newRecord", ignore = true)
     WalletPaymentReceiptEntity toEntity(WalletPaymentReceiptModel model);
 }

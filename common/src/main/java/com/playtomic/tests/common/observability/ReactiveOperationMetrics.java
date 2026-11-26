@@ -17,10 +17,12 @@ public final class ReactiveOperationMetrics {
     private final MeterRegistry registry;
     private final String operationName;
 
+    /** Creates instrumentation for the named operation in the supplied registry. */
     public ReactiveOperationMetrics(MeterRegistry registry, String operationName) {
         this(registry, operationName, "");
     }
 
+    /** Creates instrumentation for the named operation in the supplied registry. */
     public ReactiveOperationMetrics(MeterRegistry registry, String operationName, CommonProps.Observability settings) {
         this(registry, operationName, settings.getMetricNamePrefix());
     }
@@ -33,10 +35,12 @@ public final class ReactiveOperationMetrics {
         this.operationName = prefix.isEmpty() ? operationName : prefix + "." + operationName;
     }
 
+    /** Instruments the source for each subscription without subscribing on the caller's behalf. */
     public <T> Mono<T> measure(Mono<T> source) {
         return source.name(operationName).tap(Micrometer.metrics(registry));
     }
 
+    /** Instruments the source for each subscription without subscribing on the caller's behalf. */
     public <T> Flux<T> measure(Flux<T> source) {
         return source.name(operationName).tap(Micrometer.metrics(registry));
     }

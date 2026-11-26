@@ -7,6 +7,7 @@ import lombok.experimental.Accessors;
 import java.io.Serial;
 import java.time.Instant;
 
+/** Associates a provider receipt with its wallet operation. */
 @Value
 @Accessors(chain = true)
 public class WalletPaymentReceiptModel implements IModel {

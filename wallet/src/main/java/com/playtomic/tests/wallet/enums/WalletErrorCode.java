@@ -6,6 +6,7 @@ import lombok.Getter;
 
 import static com.playtomic.tests.common.constants.ErrorCode.WALLET_ERROR_CODE_PREFIX;
 
+/** Identifies wallet-specific failures using the shared error-code allocation. */
 @Getter
 @AllArgsConstructor
 public enum WalletErrorCode implements IErrorCode {

@@ -24,14 +24,17 @@ public enum WalletOperationMongoStatus {
     /** Stable audit label, independent of the Java constant name. */
     private final String name;
 
+    /** Returns the candidate only if it is an operational value rather than null or a sentinel. */
     public static WalletOperationMongoStatus validate(WalletOperationMongoStatus candidate) {
         return EnumLookup.requireOperational(candidate, UNSPECIFIED, ERROR, "Wallet operation status requires an operational value");
     }
 
+    /** Resolves the external name to an enum member, rejecting unknown names. */
     public static WalletOperationMongoStatus ofName(String name) {
         return EnumLookup.find(values(), status -> status.name.equals(name), "Unknown wallet operation status name: " + name);
     }
 
+    /** Resolves the numeric representation to an enum member, rejecting unknown values. */
     public static WalletOperationMongoStatus ofValue(int value) {
         return EnumLookup.find(values(), status -> status.value == value, "Unknown wallet operation status code: " + value);
     }

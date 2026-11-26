@@ -22,6 +22,7 @@ public class WalletMongoTransactions implements IWalletTransactions {
 
     private final TransactionalOperator walletTransactions;
 
+    /** Executes the supplied reactive work in a wallet transaction. */
     @Override
     public <T> Mono<T> execute(Mono<T> work) {
         return work.as(walletTransactions::transactional)
@@ -32,6 +33,7 @@ public class WalletMongoTransactions implements IWalletTransactions {
                         .onRetryExhaustedThrow((spec, signal) -> signal.failure()));
     }
 
+    /** Reports whether the failure represents a duplicate persistence key. */
     @Override
     public boolean isDuplicateKey(Throwable error) {
         return error instanceof DuplicateKeyException;

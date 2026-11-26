@@ -12,6 +12,7 @@ import reactor.core.publisher.Mono;
 
 import static com.playtomic.tests.common.utils.ExceptionNormalizer.normalize;
 
+/** Provides model-level access to wallet payment receipt records. */
 @Getter
 @Service
 @RequiredArgsConstructor
@@ -20,6 +21,7 @@ public class WalletPaymentReceiptEntityService implements IWalletEntityService<W
     private final WalletPaymentReceiptEntityMapper mapper;
 
     // The caller owns the transaction that binds this receipt to its operation.
+    /** Inserts a provider receipt rather than overwriting an existing receipt. */
     public Mono<Void> insert(WalletPaymentReceiptModel receipt) {
         return getMonoEntityConverter().apply(receipt).flatMap(repository::insert)
                 .switchIfEmpty(Mono.error(() -> normalize(new IllegalStateException("Payment receipt was not inserted"))))

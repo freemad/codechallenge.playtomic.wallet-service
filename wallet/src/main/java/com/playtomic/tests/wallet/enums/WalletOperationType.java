@@ -9,6 +9,7 @@ import com.playtomic.tests.common.utils.EnumLookup;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
+/** Distinguishes a wallet credit from a spend operation. */
 @Getter
 @RequiredArgsConstructor
 @JsonFormat(shape = JsonFormat.Shape.OBJECT)
@@ -21,6 +22,7 @@ public enum WalletOperationType {
     private final short value;
     private final String name;
 
+    /** Returns the bounded metrics label for an operational wallet mutation type. */
     @JsonIgnore
     public String metricLabel() {
         return switch (validate(this)) {
@@ -30,16 +32,19 @@ public enum WalletOperationType {
         };
     }
 
+    /** Returns the candidate only if it is an operational value rather than null or a sentinel. */
     public static WalletOperationType validate(WalletOperationType candidate) {
         return EnumLookup.requireOperational(candidate, WALLET_OPERATION_TYPE_UNSPECIFIED,
                 WALLET_OPERATION_TYPE_ERROR, "Wallet operation type requires an operational value");
     }
 
+    /** Resolves the numeric representation to an enum member, rejecting unknown values. */
     @JsonCreator(mode = JsonCreator.Mode.PROPERTIES)
     public static WalletOperationType ofValue(@JsonProperty(value = "value", required = true) short value) {
         return EnumLookup.find(values(), type -> type.value == value, "Unknown WalletOperationType value: " + value);
     }
 
+    /** Resolves the external name to an enum member, rejecting unknown names. */
     public static WalletOperationType ofName(String name) {
         return EnumLookup.find(values(), type -> type.name.equals(name), "Unknown WalletOperationType name: " + name);
     }

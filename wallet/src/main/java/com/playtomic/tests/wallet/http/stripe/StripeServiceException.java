@@ -5,15 +5,18 @@ import com.playtomic.tests.common.exceptions.BusinessException;
 
 import java.io.Serial;
 
+/** Reports a failure communicating with the Stripe service. */
 public class StripeServiceException extends BusinessException {
 
     @Serial
     private static final long serialVersionUID = -2717985606763066055L;
 
+    /** Creates an exception reporting a Stripe service failure. */
     public StripeServiceException(String message) {
         this(message, null);
     }
 
+    /** Creates an exception reporting a Stripe service failure. */
     public StripeServiceException(String message, Throwable cause) {
         this(CommonErrorCode.EXTERNAL_SERVICE_EXCEPTION, message, cause);
     }

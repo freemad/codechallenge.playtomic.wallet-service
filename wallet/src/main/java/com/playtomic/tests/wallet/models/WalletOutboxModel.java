@@ -10,6 +10,7 @@ import java.io.Serial;
 import java.math.BigDecimal;
 import java.time.Instant;
 
+/** Represents a balance event awaiting publication or acknowledgment. */
 @Value
 @Accessors(chain = true)
 public class WalletOutboxModel implements IModel {

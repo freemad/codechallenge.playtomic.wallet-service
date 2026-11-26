@@ -14,10 +14,12 @@ public final class ReactiveBulkhead {
 
     private final Bulkhead bulkhead;
 
+    /** Creates a subscription-time guard limiting concurrent calls. */
     public ReactiveBulkhead(String name, CommonProps.Resilience.Bulkhead settings) {
         this(name, settings.getMaxConcurrentCalls());
     }
 
+    /** Creates a subscription-time guard limiting concurrent calls. */
     public ReactiveBulkhead(String name, int maxConcurrentCalls) {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("name must not be blank");
@@ -31,10 +33,12 @@ public final class ReactiveBulkhead {
                 .build());
     }
 
+    /** Applies the concurrency limit separately to each subscription. */
     public <T> Mono<T> protect(Mono<T> source) {
         return source.transformDeferred(BulkheadOperator.of(bulkhead));
     }
 
+    /** Applies the concurrency limit separately to each subscription. */
     public <T> Flux<T> protect(Flux<T> source) {
         return source.transformDeferred(BulkheadOperator.of(bulkhead));
     }

@@ -1,13 +1,12 @@
 package com.playtomic.tests.common.contracts.services;
 
 import com.playtomic.tests.common.contracts.models.IEntity;
+import com.playtomic.tests.common.contracts.models.IEntityService;
 import com.playtomic.tests.common.contracts.models.IModel;
 import com.playtomic.tests.common.contracts.models.IRepository;
 import lombok.Data;
 import lombok.Value;
 import org.junit.jupiter.api.Test;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -19,6 +18,7 @@ import java.util.function.Function;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -39,7 +39,7 @@ class EntityServiceCollectionTest {
 
         assertEquals(expected, service.findAllAsCollection().block(TIMEOUT));
         assertEquals(expected, service.findAllByIdAsCollection(ids).block(TIMEOUT));
-        assertEquals(expected, service.findAllByIdAsCollection(idStream).block(TIMEOUT));
+        assertEquals(expected, service.findAllById(idStream).collectList().block(TIMEOUT));
     }
 
     @Test
@@ -65,29 +65,14 @@ class EntityServiceCollectionTest {
                 () -> service.findAllByIdAsCollection(ids).block(TIMEOUT)));
     }
 
-    private IEntityService<TestModel, TestEntity, String> service(Function<TestEntity, Mono<TestModel>> converter) {
-        return new IEntityService<>() {
-            @Override
-            public Logger getLogger() {
-                return LoggerFactory.getLogger(EntityServiceCollectionTest.class);
-            }
-
-            @Override
-            public TestRepository getRepository() {
-                return repository;
-            }
-
-            @Override
-            public Function<TestEntity, Mono<TestModel>> getMonoModelConverter() {
-                return converter;
-            }
-
-            @Override
-            public Function<TestModel, Mono<TestEntity>> getMonoEntityConverter() {
-                return model -> Mono.just(new TestEntity(model.getId()));
-            }
-        };
+    private TestService service(Function<TestEntity, Mono<TestModel>> converter) {
+        TestService service = mock(TestService.class, CALLS_REAL_METHODS);
+        when(service.getRepository()).thenReturn(repository);
+        when(service.getMonoModelConverter()).thenReturn(converter);
+        return service;
     }
+
+    private interface TestService extends IEntityService<TestEntity, TestModel, String> {}
 
     private interface TestRepository extends IRepository<TestEntity, String> {}
 

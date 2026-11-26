@@ -8,6 +8,7 @@ import lombok.experimental.Accessors;
 import java.io.Serial;
 import java.time.Instant;
 
+/** Identifies a worker lease and the token controlling its release. */
 @Value
 @Accessors(chain = true)
 public class WalletJobLeaseModel implements IModel {

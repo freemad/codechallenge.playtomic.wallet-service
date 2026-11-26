@@ -11,6 +11,7 @@ import lombok.experimental.Accessors;
 import java.io.Serial;
 import java.math.BigDecimal;
 
+/** Carries a card top-up request for the loopback demo endpoint. */
 @Getter
 @Setter
 @NoArgsConstructor
