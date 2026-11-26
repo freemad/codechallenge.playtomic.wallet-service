@@ -266,6 +266,8 @@ return the recorded result, not the current wallet balance.
   [wallet logging contract](docs/wallet-logging.md) for JSON fields, event levels,
   redaction rules, and how to enable wallet-only debug logging. Alert routing and
   trace export depend on the deployment's observability stack.
+- For Actuator metrics in Grafana and local database browsing, see the
+  [Prometheus, Grafana and Mongo Express Compose guide](docs/local-monitoring.md).
 
 A production write contract is not defined. Production top-up would require
 wallet-owner authorization before both initial dispatch and replay, TLS, and
