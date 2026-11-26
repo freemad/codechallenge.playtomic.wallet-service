@@ -21,6 +21,8 @@ The basic structure of a wallet is its identifier and its current balance. If yo
 
 ## Build and test
 
+See the [wallet command guide](docs/run-wallet.md) for host and Compose startup, unit and integration tests, the double-operation races, and the opt-in pressure test.
+
 Use JDK 25 and Maven 3.9+. From the repository root, `mvn test` runs the unit
 suite and `mvn verify` also runs the wallet integration tests in Docker. They
 use a disposable MongoDB replica set and, for the enabled outbox relay test,
