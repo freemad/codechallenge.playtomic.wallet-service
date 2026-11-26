@@ -18,8 +18,6 @@ import com.playtomic.tests.wallet.services.WalletLookupService;
 import com.playtomic.tests.wallet.services.WalletMutationService;
 import com.playtomic.tests.wallet.services.WalletTopUpProviders;
 import lombok.RequiredArgsConstructor;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -42,7 +40,6 @@ import static com.playtomic.tests.wallet.controllers.WalletHttpResponses.toRespo
 @RequestMapping("/api/v1/wallets")
 @RequiredArgsConstructor
 public class WalletControllerV1 {
-    private static final Logger log = LoggerFactory.getLogger(WalletControllerV1.class);
 
     private final WalletLookupService walletService;
     private final WalletResponseMapperV1 walletResponseMapper;
@@ -55,9 +52,7 @@ public class WalletControllerV1 {
 
     @GetMapping("/log")
     Mono<ResponseEntity<ResponseDtoV1>> log() {
-        long currentTimeMillis = System.currentTimeMillis();
-        log.info("Logging at {}", currentTimeMillis);
-        return Mono.fromCallable(() -> toResponse(new StringDtoV1().setString(String.valueOf(currentTimeMillis)),
+        return Mono.fromCallable(() -> toResponse(new StringDtoV1().setString(String.valueOf(System.currentTimeMillis())),
                 CacheControl.empty()));
     }
 

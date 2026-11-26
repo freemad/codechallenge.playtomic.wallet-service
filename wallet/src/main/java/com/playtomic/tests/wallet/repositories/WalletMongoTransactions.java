@@ -2,6 +2,7 @@ package com.playtomic.tests.wallet.repositories;
 
 import com.mongodb.MongoException;
 import com.playtomic.tests.wallet.contracts.IWalletTransactions;
+import com.playtomic.tests.wallet.observability.WalletLogEvent;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Component;
@@ -27,6 +28,7 @@ public class WalletMongoTransactions implements IWalletTransactions {
                 .retryWhen(Retry.backoff(MAX_RETRIES, MIN_BACKOFF)
                         .maxBackoff(MAX_BACKOFF)
                         .filter(WalletMongoTransactions::isTransientTransactionError)
+                        .doBeforeRetry(signal -> WalletLogEvent.TRANSACTION_RETRY.fields().addKeyValue("attempt", signal.totalRetries() + 1).log())
                         .onRetryExhaustedThrow((spec, signal) -> signal.failure()));
     }
 

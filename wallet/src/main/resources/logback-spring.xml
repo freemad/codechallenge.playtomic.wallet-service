@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <springProperty name="filePath" source="wallet.log.file" defaultValue="logs/wallet.log"/>
+    <springProperty name="collector" source="wallet.log.elastic.destination" defaultValue="localhost:5044"/>
+    <include resource="logging/service-appenders.xml"/>
+    <logger name="wallet.events" level="INFO"/>
+</configuration>
+

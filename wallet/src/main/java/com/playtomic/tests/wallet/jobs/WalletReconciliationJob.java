@@ -8,8 +8,12 @@ import com.playtomic.tests.wallet.models.WalletOutcome;
 import com.playtomic.tests.wallet.services.WalletOperationService;
 import com.playtomic.tests.wallet.services.entity.WalletJobLeaseEntityService;
 import com.playtomic.tests.wallet.services.entity.WalletOperationEntityService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+
+import static com.playtomic.tests.wallet.enums.WalletOperationStatus.WALLET_OPERATION_STATUS_PENDING;
+import static com.playtomic.tests.wallet.enums.WalletOperationStatus.WALLET_OPERATION_STATUS_RECEIPT_RECORDED;
+import static com.playtomic.tests.wallet.enums.WalletOperationStatus.WALLET_OPERATION_STATUS_REVIEW_REQUIRED;
+import static com.playtomic.tests.wallet.observability.WalletLogEvent.*;
+
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -19,15 +23,10 @@ import reactor.core.publisher.Mono;
 
 import java.time.Instant;
 
-import static com.playtomic.tests.wallet.enums.WalletOperationStatus.WALLET_OPERATION_STATUS_PENDING;
-import static com.playtomic.tests.wallet.enums.WalletOperationStatus.WALLET_OPERATION_STATUS_RECEIPT_RECORDED;
-import static com.playtomic.tests.wallet.enums.WalletOperationStatus.WALLET_OPERATION_STATUS_REVIEW_REQUIRED;
-
 @Component
 @EnableScheduling
 @ConditionalOnProperty(prefix = WalletReconciliationProps.PREFIX, name = "enabled", havingValue = "true")
 public class WalletReconciliationJob {
-    private static final Logger log = LoggerFactory.getLogger(WalletReconciliationJob.class);
     private static final String JOB = "payment-reconciliation";
 
     private final WalletOperationService operations;
@@ -50,7 +49,8 @@ public class WalletReconciliationJob {
         return Mono.usingWhen(Mono.defer(() -> leases.acquire(JOB, properties.lease())),
                 token -> indexReady.then(Mono.defer(this::reconcileBatch)).timeout(properties.runTimeout()),
                 token -> leases.release(JOB, token))
-                .onErrorMap(ExceptionNormalizer::normalize);
+                .onErrorMap(ExceptionNormalizer::normalize)
+                .doOnError(error -> RECONCILIATION_FAILED.fields().log());
     }
 
     private Mono<Void> reconcileBatch() {
@@ -60,7 +60,7 @@ public class WalletReconciliationJob {
                         .flatMap(WalletOutcome::optionalValue)
                         .doOnNext(result -> {
                             if (result.getStatus() == WALLET_OPERATION_STATUS_REVIEW_REQUIRED) {
-                                log.warn("Stale payment requires review: operationId={}", result.getId());
+                                REVIEW.operation(result.getId()).log();
                             }
                         }))
                 .thenMany(Flux.defer(() -> operationEntities.reconciliationBatch(
@@ -69,8 +69,7 @@ public class WalletReconciliationJob {
                         .flatMap(WalletOutcome::optionalValue).then()
                         .onErrorMap(ExceptionNormalizer::normalize)
                         .onErrorResume(BusinessException.class, error -> {
-                            log.warn("Recorded payment could not be applied: operationId={} errorCode={}",
-                                    operation.getId(), error.getErrorCode().getCode());
+                            RECOVERY_FAILED.operation(operation.getId()).addKeyValue("errorCode", error.getErrorCode().getCode()).log();
                             return operationEntities.deferReceiptRecovery(operation);
                         }))
                 .then();
