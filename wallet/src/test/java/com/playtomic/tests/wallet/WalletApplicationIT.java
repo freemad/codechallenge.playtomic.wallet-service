@@ -23,6 +23,7 @@ import com.playtomic.tests.wallet.services.entity.WalletOutboxEntityService;
 import org.bson.Document;
 import org.bson.types.Decimal128;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -325,6 +326,7 @@ class WalletApplicationIT {
                             });
                             assertThat(results).anyMatch(result -> result.getStatus() == WALLET_OPERATION_STATUS_SUCCEEDED);
                         })
+                        .then(checkCommittedBalance("credit-race", "15.25", "5.25", 1))
                         .then(mutations.spend("credit-race", "new-key", BigDecimal.ONE, "EUR")
                                 .doOnNext(spend -> assertThat(successfulResult(spend).getStatus()).isEqualTo(WALLET_OPERATION_STATUS_SUCCEEDED)))
                         .then(topUp))
@@ -339,6 +341,61 @@ class WalletApplicationIT {
         StepVerifier.create(mutations.spend("credit-race", "same-key", amount, "EUR"))
                 .assertNext(result -> assertFailure(result, WalletErrorCode.IDEMPOTENCY_CONFLICT))
                 .expectComplete().verify(DEADLINE);
+    }
+
+    @Test
+    void concurrentDistinctTopUpsBothCreditTheWallet() {
+        String id = "two-credits";
+        var first = new BigDecimal("5.25");
+        var second = new BigDecimal("2.00");
+        when(stripe.charge(new CardChargeModel(TEST_CARD, first))).thenReturn(Mono.just(new PaymentReceiptModel("two-credits-a")));
+        when(stripe.charge(new CardChargeModel(TEST_CARD, second))).thenReturn(Mono.just(new PaymentReceiptModel("two-credits-b")));
+        StepVerifier.create(seedWallet(id, "10.00").thenMany(Flux.merge(
+                        mutations.topUp(id, "a", first, "EUR", TEST_CARD), mutations.topUp(id, "b", second, "EUR", TEST_CARD)))
+                        .map(WalletApplicationIT::successfulResult).collectList())
+                .assertNext(results -> {
+                    assertThat(results).hasSize(2).allSatisfy(r -> assertThat(r.getStatus()).isEqualTo(WALLET_OPERATION_STATUS_SUCCEEDED));
+                    assertThat(results).extracting(WalletOperationModel::getId).doesNotHaveDuplicates();
+                }).expectComplete().verify(DEADLINE);
+        StepVerifier.create(checkCommittedBalance(id, "17.25", "7.25", 2).then(outboxCount(id, 1)))
+                .expectNext(2L).expectComplete().verify(DEADLINE);
+        verify(stripe).charge(new CardChargeModel(TEST_CARD, first));
+        verify(stripe).charge(new CardChargeModel(TEST_CARD, second));
+        verifyNoMoreInteractions(stripe);
+    }
+
+    @Test
+    void concurrentSameKeySpendsDebitOnlyOnceEvenWhenBothAreAffordable() {
+        String id = "duplicate-debit";
+        var spend = mutations.spend(id, "same", new BigDecimal("7.00"), "EUR").map(WalletApplicationIT::successfulResult);
+        StepVerifier.create(seedWallet(id, "20.00").thenMany(Flux.merge(spend, spend)).collectList())
+                .assertNext(results -> {
+                    assertThat(results).hasSize(2).allSatisfy(r -> {
+                        assertThat(r.getStatus()).isEqualTo(WALLET_OPERATION_STATUS_SUCCEEDED);
+                        assertThat(r.getResultingBalance()).isEqualByComparingTo("13.00");
+                    });
+                    assertThat(results.getFirst().getId()).isEqualTo(results.getLast().getId());
+                }).expectComplete().verify(DEADLINE);
+        StepVerifier.create(checkCommittedBalance(id, "13.00", "-7.00", 1).then(outboxCount(id, 2)))
+                .expectNext(1L).expectComplete().verify(DEADLINE);
+        verifyNoInteractions(stripe);
+    }
+
+    @Test
+    @EnabledIfSystemProperty(named = "wallet.pressure", matches = "true")
+    void pressureConcurrentSpendsOnOneWallet() {
+        String id = "pressure-debit";
+        StepVerifier.create(seedWallet(id, "20").thenMany(Flux.range(0, 40).flatMap(i ->
+                        mutations.spend(id, "spend-" + i, BigDecimal.ONE, "EUR"), 4))
+                        .map(WalletApplicationIT::successfulResult).collectList())
+                .assertNext(results -> {
+                    assertThat(results).hasSize(40).extracting(WalletOperationModel::getId).doesNotHaveDuplicates();
+                    assertThat(results).filteredOn(r -> r.getStatus() == WALLET_OPERATION_STATUS_SUCCEEDED).hasSize(20);
+                    assertThat(results).filteredOn(r -> r.getStatus() == WALLET_OPERATION_STATUS_INSUFFICIENT_FUNDS).hasSize(20);
+                }).expectComplete().verify(Duration.ofSeconds(60));
+        StepVerifier.create(checkCommittedBalance(id, "0", "-20", 20).then(outboxCount(id, 2)))
+                .expectNext(20L).expectComplete().verify(DEADLINE);
+        verifyNoInteractions(stripe);
     }
 
     @Test
@@ -595,6 +652,20 @@ class WalletApplicationIT {
     private Mono<Void> seedWallet(String id, String balance) {
         return mongo.insert(new Document("_id", id).append("currency", "EUR")
                 .append("balance", new Decimal128(new BigDecimal(balance))), "wallets").then();
+    }
+
+    private Mono<Void> checkCommittedBalance(String id, String expectedBalance, String expectedDelta, int postings) {
+        return Mono.zip(mongo.findById(id, Document.class, "wallets").single(),
+                        mongo.find(Query.query(Criteria.where("walletId").is(id)), Document.class, "wallet_ledger").collectList())
+                .doOnNext(state -> {
+                    var wallet = state.getT1();
+                    assertThat(wallet.get("balance", Decimal128.class).bigDecimalValue()).isEqualByComparingTo(expectedBalance);
+                    assertThat(wallet.getLong("ledgerSequence")).isEqualTo((long) postings);
+                    var ledger = state.getT2();
+                    assertThat(ledger).hasSize(postings);
+                    assertThat(ledger.stream().map(row -> row.get("delta", Decimal128.class).bigDecimalValue())
+                            .reduce(BigDecimal.ZERO, BigDecimal::add)).isEqualByComparingTo(expectedDelta);
+                }).then();
     }
 
     private Mono<Long> outboxCount(String walletId, int type) {
