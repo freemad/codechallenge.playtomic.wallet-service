@@ -94,7 +94,7 @@ class EntityServiceCollectionTest {
     @Data
     private static class TestEntity implements IEntity<String> {
         @Serial
-        private static final long serialVersionUID = 1L;
+        private static final long serialVersionUID = -3579995664501668761L;
 
         private final String id;
         private boolean newRecord;
@@ -103,7 +103,7 @@ class EntityServiceCollectionTest {
     @Value
     private static class TestModel implements IModel {
         @Serial
-        private static final long serialVersionUID = 1L;
+        private static final long serialVersionUID = -5070035614387241942L;
 
         String id;
     }
