@@ -23,6 +23,7 @@ import reactor.core.publisher.Mono;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.List;
 
 import static com.playtomic.tests.common.utils.ExceptionNormalizer.normalize;
 
@@ -42,6 +43,13 @@ public class WalletOperationEntityService implements IWalletEntityService<Wallet
         return repository.findById(id).flatMap(this::mapOperation);
     }
 
+    /** Exposes unsettled credit amounts. */
+    public Flux<BigDecimal> unsettledCredits(String walletId) {
+        return repository.findByWalletIdAndTypeAndStatusIn(walletId, WalletOperationMongoType.TOP_UP,
+                List.of(WalletOperationMongoStatus.PENDING, WalletOperationMongoStatus.REVIEW_REQUIRED,
+                        WalletOperationMongoStatus.RECEIPT_RECORDED)).map(WalletOperationEntity::getAmount);
+    }
+
     /** Attempts to reserve a new operation without overwriting another caller's reservation. */
     public Mono<WalletOperationModel> insertIfAbsent(WalletOperationModel request) {
         return Mono.defer(() -> {
@@ -53,7 +61,7 @@ public class WalletOperationEntityService implements IWalletEntityService<Wallet
             }
             return getMonoEntityConverter().apply(request).flatMap(repository::insert)
                     .switchIfEmpty(Mono.error(() -> normalize(new IllegalStateException("Wallet operation was not inserted"))));
-        }).onErrorResume(DuplicateKeyException.class, ignored -> Mono.empty()).flatMap(this::mapOperation);
+        }).flatMap(this::mapOperation);
     }
 
     /** Moves a top-up to the next state only when its current state is expected. */

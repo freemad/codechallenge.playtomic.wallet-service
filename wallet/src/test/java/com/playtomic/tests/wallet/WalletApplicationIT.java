@@ -399,6 +399,52 @@ class WalletApplicationIT {
     }
 
     @Test
+    void inexactCreditNeverDispatches() {
+        String id = "credit-overflow";
+        StepVerifier.create(seedWallet(id, "1E+34").then(mutations.topUp(id, "key", BigDecimal.ONE, "EUR", TEST_CARD)))
+                .assertNext(result -> assertFailure(result, WalletErrorCode.INVALID_REQUEST)).verifyComplete();
+        verifyNoInteractions(stripe);
+    }
+
+    @Test
+    void concurrentCreditsCannotBothClaimLastExactUnit() {
+        String id = "last-exact-unit";
+        var call = new CardChargeModel(TEST_CARD, BigDecimal.ONE);
+        var dispatched = reactor.core.publisher.Sinks.<Void>empty();
+        var release = reactor.core.publisher.Sinks.<Void>empty();
+        when(stripe.charge(call)).thenAnswer(inv -> {
+            dispatched.tryEmitEmpty();
+            return release.asMono().thenReturn(new PaymentReceiptModel(id));
+        });
+        var first = mutations.topUp(id, "a", BigDecimal.ONE, "EUR", TEST_CARD);
+        var second = dispatched.asMono().then(mutations.topUp(id, "b", BigDecimal.ONE, "EUR", TEST_CARD))
+                .doOnNext(result -> assertFailure(result, WalletErrorCode.INVALID_REQUEST))
+                .doFinally(signal -> release.tryEmitEmpty());
+        StepVerifier.create(seedWallet(id, "9".repeat(34)).then(Mono.when(first.doOnNext(result ->
+                        assertThat(successfulResult(result).getStatus()).isEqualTo(WALLET_OPERATION_STATUS_SUCCEEDED)), second))
+                        .then(checkCommittedBalance(id, "1E+34", "1", 1)))
+                .expectComplete().verify(DEADLINE);
+        verify(stripe).charge(call);
+    }
+
+    @Test
+    @EnabledIfSystemProperty(named = "wallet.pressure", matches = "true")
+    void pressureConcurrentCreditsOnOneWallet() {
+        String id = "pressure-credit";
+        var call = new CardChargeModel(TEST_CARD, BigDecimal.ONE);
+        when(stripe.charge(call)).thenAnswer(inv -> Mono.just(new PaymentReceiptModel(UUID.randomUUID().toString())));
+        StepVerifier.create(seedWallet(id, "0").thenMany(Flux.range(0, 40).flatMap(i ->
+                        mutations.topUp(id, "credit-" + i, BigDecimal.ONE, "EUR", TEST_CARD), 4))
+                        .map(WalletApplicationIT::successfulResult).collectList())
+                .assertNext(results -> {
+                    assertThat(results).hasSize(40).extracting(WalletOperationModel::getId).doesNotHaveDuplicates();
+                    assertThat(results).allMatch(r -> r.getStatus() == WALLET_OPERATION_STATUS_SUCCEEDED);
+                }).expectComplete().verify(Duration.ofSeconds(60));
+        verify(stripe, times(40)).charge(call);
+        StepVerifier.create(checkCommittedBalance(id, "40", "40", 40).then(outboxCount(id, 1))).expectNext(40L).verifyComplete();
+    }
+
+    @Test
     void invalidMissingAndWrongCurrencyRequestsFailWithoutDispatch() {
         StepVerifier.create(seedWallet("currency-check", "10").thenMany(Flux.concat(
                         mutations.topUp("currency-check", "invalid", BigDecimal.ZERO, "EUR", TEST_CARD),
@@ -436,15 +482,23 @@ class WalletApplicationIT {
     @Test
     void uncertainChargeIsNotDispatchedOnReplay() {
         var charge = new CardChargeModel(TEST_CARD, BigDecimal.ONE);
-        when(stripe.charge(charge)).thenReturn(Mono.error(new StripeServiceException("Timeout")));
+        var providerJournal = new java.util.concurrent.atomic.AtomicReference<String>();
+        when(stripe.charge(charge)).thenReturn(Mono.defer(() -> {
+            providerJournal.set("confirmed-uncertain-charge"); // Provider accepted before its response was lost.
+            return Mono.error(new StripeServiceException("Timeout"));
+        }));
         Mono<WalletOperationModel> topUp = mutations.topUp("uncertain", "key", BigDecimal.ONE, "EUR", TEST_CARD)
                 .map(WalletApplicationIT::successfulResult);
         StepVerifier.create(seedWallet("uncertain", "0").thenMany(Flux.concat(topUp, topUp))
                         .map(WalletOperationModel::getStatus))
                 .expectNext(WALLET_OPERATION_STATUS_REVIEW_REQUIRED, WALLET_OPERATION_STATUS_REVIEW_REQUIRED)
                 .expectComplete().verify(DEADLINE);
-        StepVerifier.create(outboxCount("uncertain", 1))
-                .expectNext(0L).expectComplete().verify(DEADLINE);
+        StepVerifier.create(topUp.flatMap(review -> operations.recordReceipt(review.getId(), providerJournal.get()))
+                        .then(topUp).then(topUp))
+                .assertNext(result -> assertThat(result.getStatus()).isEqualTo(WALLET_OPERATION_STATUS_SUCCEEDED))
+                .expectComplete().verify(DEADLINE);
+        StepVerifier.create(checkCommittedBalance("uncertain", "1", "1", 1).then(outboxCount("uncertain", 1)))
+                .expectNext(1L).verifyComplete();
         verify(stripe, times(1)).charge(charge);
     }
 
