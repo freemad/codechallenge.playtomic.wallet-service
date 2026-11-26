@@ -13,8 +13,10 @@ import lombok.NoArgsConstructor;
 import java.util.Arrays;
 import java.util.Map;
 
+/** Converts business exceptions to responses while controlling diagnostic disclosure. */
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class ExceptionUtil {
+    /** Maps a business failure into an error response using the selected diagnostic detail level. */
     public static ResponseDtoV1 getBizExceptionResponseDtoV1(BusinessException businessException, IErrorModelMapperV1 errorMapper, boolean debugMode) {
         var errorParams = renderErrorParams(businessException, debugMode);
         return new ResponseDtoV1()
@@ -22,6 +24,7 @@ public final class ExceptionUtil {
                 .setError(errorMapper.toDto(businessException.toError(errorParams)));
     }
 
+    /** Selects which diagnostic details may appear in the response for the given debug setting. */
     public static Map<String, String> renderErrorParams(BusinessException bex, boolean debugMode) {
         return debugMode
                 ? Map.of(

@@ -11,6 +11,7 @@ import lombok.experimental.Accessors;
 import java.io.Serial;
 import java.util.Map;
 
+/** Carries an error code and optional diagnostic details inside the application. */
 @Data
 @Accessors(chain = true)
 @NoArgsConstructor
@@ -25,6 +26,7 @@ public class Error
     private BusinessException exception;
     private Map<String, String> params;
 
+    /** Creates an error from the supplied exception and diagnostic parameters. */
     public static Error ofException(BusinessException exception, Map<String, String> params) {
         return new Error()
                 .setCode(exception.getErrorCode())

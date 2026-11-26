@@ -20,10 +20,12 @@ class WalletBalanceMongoOperations implements IWalletBalanceMongoOperations {
 
     private final ReactiveMongoOperations mongo;
 
+    /** Uses the supplied reactive MongoDB client for balance and posting updates. */
     public WalletBalanceMongoOperations(ReactiveMongoOperations mongo) {
         this.mongo = mongo;
     }
 
+    /** Applies the signed delta to a matching currency, subject to the optional minimum balance, and records the sequenced posting. */
     @Override
     public Mono<WalletEntity> incrementBalance(String id, String currency, BigDecimal delta,
                                                Optional<BigDecimal> minimumBalance) {

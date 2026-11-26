@@ -15,6 +15,7 @@ public final class ReactiveCircuitBreaker {
 
     private final CircuitBreaker circuitBreaker;
 
+    /** Creates a subscription-time guard backed by the configured circuit breaker. */
     public ReactiveCircuitBreaker(String name, CommonProps.Resilience.CircuitBreaker settings) {
         this(CircuitBreaker.of(name, CircuitBreakerConfig.custom()
                 .slidingWindowType(CircuitBreakerConfig.SlidingWindowType.COUNT_BASED)
@@ -25,14 +26,17 @@ public final class ReactiveCircuitBreaker {
                 .build()));
     }
 
+    /** Creates a subscription-time guard backed by the configured circuit breaker. */
     public ReactiveCircuitBreaker(CircuitBreaker circuitBreaker) {
         this.circuitBreaker = Objects.requireNonNull(circuitBreaker, "circuitBreaker");
     }
 
+    /** Applies the circuit breaker separately to each subscription. */
     public <T> Mono<T> protect(Mono<T> source) {
         return source.transformDeferred(CircuitBreakerOperator.of(circuitBreaker));
     }
 
+    /** Applies the circuit breaker separately to each subscription. */
     public <T> Flux<T> protect(Flux<T> source) {
         return source.transformDeferred(CircuitBreakerOperator.of(circuitBreaker));
     }

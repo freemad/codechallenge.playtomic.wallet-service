@@ -14,6 +14,7 @@ import tools.jackson.databind.JsonNode;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
+/** Creates and captures orders through the configured PayPal endpoints. */
 @Component
 public final class PayPalClient {
     private final ProviderHttpClient http;
@@ -24,11 +25,13 @@ public final class PayPalClient {
         this.http = new ProviderHttpClient(client, settings.getRequestTimeout());
     }
 
+    /** Submits an order to the configured PayPal orders endpoint. */
     public Mono<JsonNode> create(Map<String, ?> request) {
         return http.post(settings.getOrdersUri(), request, HttpStatus.CREATED, null)
                 .map(ResponseEntity::getBody);
     }
 
+    /** Requests capture of the identified PayPal order. */
     public Mono<ResponseEntity<JsonNode>> capture(String orderId) {
         if (orderId == null || orderId.isBlank() || ".".equals(orderId) || "..".equals(orderId)) {
             return Mono.error(new IllegalArgumentException("Invalid PayPal order ID"));

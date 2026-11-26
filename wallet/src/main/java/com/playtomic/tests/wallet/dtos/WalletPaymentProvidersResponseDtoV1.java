@@ -7,6 +7,7 @@ import lombok.Value;
 import java.io.Serial;
 import java.util.List;
 
+/** Lists providers configured for wallet top-ups, not their live readiness. */
 @Value
 public class WalletPaymentProvidersResponseDtoV1 implements IDto {
     @Serial
@@ -14,12 +15,14 @@ public class WalletPaymentProvidersResponseDtoV1 implements IDto {
 
     List<String> providers;
 
+    /** Returns the transport type discriminator. */
     @Override
     @JsonIgnore
     public String getType() {
         return "wallet_payment_providers";
     }
 
+    /** Returns the version of the transport representation. */
     @Override
     @JsonIgnore
     public String getVersion() {

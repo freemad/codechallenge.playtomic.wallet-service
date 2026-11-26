@@ -16,12 +16,14 @@ import java.math.BigDecimal;
 public class StripeService {
     private final StripeAdapter adapter;
 
+    /** Charges the supplied card and returns the provider payment identifier. */
     public Mono<Payment> charge(String creditCardNumber, BigDecimal amount) {
         return Mono.defer(() -> adapter.charge(new CardChargeModel(creditCardNumber, amount)))
                 .map(receipt -> new Payment(receipt.getId()))
                 .onErrorMap(ExceptionNormalizer::normalize);
     }
 
+    /** Requests a refund for a provider payment, not a return of a wallet purchase. */
     public Mono<Void> refund(String paymentId) {
         return Mono.defer(() -> adapter.refund(new PaymentRefundModel(paymentId)))
                 .onErrorMap(ExceptionNormalizer::normalize);

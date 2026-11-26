@@ -26,6 +26,7 @@ import java.util.Arrays;
 
 import static com.playtomic.tests.common.utils.ExceptionNormalizer.normalize;
 
+/** Provides model-level access to wallet operation records. */
 @Service
 @RequiredArgsConstructor
 public class WalletOperationEntityService implements IWalletEntityService<WalletOperationModel, WalletOperationEntity> {
@@ -35,11 +36,13 @@ public class WalletOperationEntityService implements IWalletEntityService<Wallet
     private final WalletOperationEntityMapper mapper;
     private final IWalletOperationMongoOperations mongoOperations;
 
+    /** Looks up the model for the supplied identifier. */
     @Override
     public Mono<WalletOperationModel> findById(String id) {
         return repository.findById(id).flatMap(this::mapOperation);
     }
 
+    /** Attempts to reserve a new operation without overwriting another caller's reservation. */
     public Mono<WalletOperationModel> insertIfAbsent(WalletOperationModel request) {
         return Mono.defer(() -> {
             try {
@@ -53,12 +56,14 @@ public class WalletOperationEntityService implements IWalletEntityService<Wallet
         }).onErrorResume(DuplicateKeyException.class, ignored -> Mono.empty()).flatMap(this::mapOperation);
     }
 
+    /** Moves a top-up to the next state only when its current state is expected. */
     public Mono<WalletOperationModel> transitionTopUp(String id, WalletOperationStatus next, WalletOperationStatus... expected) {
         return Mono.defer(() -> mongoOperations.transitionTopUp(id, mapper.toEntityStatus(next),
                         Arrays.stream(expected).map(mapper::toEntityStatus).toArray(WalletOperationMongoStatus[]::new)))
                 .flatMap(this::mapOperation);
     }
 
+    /** Records the final status and balance only if the expected state still matches. */
     public Mono<WalletOperationModel> finalizeOperation(String id, WalletOperationStatus expected, WalletOperationStatus next,
                                                          BigDecimal balance) {
         return Mono.defer(() -> mongoOperations.finalizeOperation(id, mapper.toEntityStatus(expected),
@@ -66,17 +71,20 @@ public class WalletOperationEntityService implements IWalletEntityService<Wallet
                 .flatMap(this::mapOperation);
     }
 
+    /** Ensures the index used to find operations eligible for reconciliation. */
     public Mono<String> ensureReconciliationIndex() {
         return mongoOperations.ensureReconciliationIndex()
                 .switchIfEmpty(Mono.error(() -> normalize(new IllegalStateException("Reconciliation index was not created"))));
     }
 
+    /** Selects a bounded batch of operations in the requested status at or before the cutoff. */
     public Flux<WalletOperationModel> reconciliationBatch(WalletOperationStatus status, Instant cutoff, int limit) {
         return repository.findByTypeAndStatusAndUpdatedAtLessThanEqualOrderByUpdatedAtAscIdAsc(
                         WalletOperationMongoType.TOP_UP, mapper.toEntityStatus(status), cutoff, PageRequest.ofSize(limit))
                 .concatMap(this::mapOperation);
     }
 
+    /** Postpones recovery of a recorded receipt only if the observed operation has not changed. */
     public Mono<Void> deferReceiptRecovery(WalletOperationModel operation) {
         return Mono.defer(() -> repository.deferReceiptRecovery(operation.getId(), operation.getUpdatedAt(), Instant.now()))
                 .then();

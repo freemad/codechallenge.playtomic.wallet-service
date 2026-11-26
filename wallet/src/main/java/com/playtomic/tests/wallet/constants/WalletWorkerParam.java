@@ -12,6 +12,7 @@ public final class WalletWorkerParam {
     private WalletWorkerParam() {
     }
 
+    /** Shares successful index initialization without permanently caching a failed attempt. */
     public static <T> Mono<T> cacheSuccessfulIndex(Mono<T> source) {
         return source.cache(value -> INDEX_SUCCESS_TTL, error -> Duration.ZERO, () -> Duration.ZERO);
     }

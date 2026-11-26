@@ -11,6 +11,7 @@ import tools.jackson.databind.JsonNode;
 import java.util.Map;
 import java.util.Objects;
 
+/** Submits authorization envelopes to the configured Redsys endpoint. */
 @Component
 public final class RedsysClient {
     private final ProviderHttpClient http;
@@ -21,6 +22,7 @@ public final class RedsysClient {
         this.http = new ProviderHttpClient(client, settings.getRequestTimeout());
     }
 
+    /** Posts the authorization envelope to the configured Redsys endpoint. */
     public Mono<JsonNode> authorize(Map<String, String> envelope) {
         return http.post(settings.getAuthorizationUri(), envelope, HttpStatus.OK, null)
                 .map(response -> Objects.requireNonNull(response.getBody()));

@@ -10,6 +10,7 @@ import java.io.Serial;
 import java.time.OffsetDateTime;
 import java.util.Map;
 
+/** Version-one HTTP response envelope for a result or error. */
 @Data
 @Accessors(chain = true)
 @NoArgsConstructor
@@ -26,6 +27,7 @@ public class ResponseDtoV1
     private ErrorDtoV1 error;
     private Map<String, String> metadata;
 
+    /** Reports whether the result represents success rather than an error. */
     public boolean isSuccess() {
         return error == null;
     }

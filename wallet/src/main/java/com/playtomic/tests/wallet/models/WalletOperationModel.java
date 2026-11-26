@@ -15,6 +15,7 @@ import com.playtomic.tests.wallet.enums.WalletOperationType;
 import static com.playtomic.tests.wallet.configs.WalletPaymentProviderProps.STRIPE;
 import static com.playtomic.tests.wallet.enums.WalletOperationType.WALLET_OPERATION_TYPE_TOP_UP;
 
+/** Represents the request identity, state and result used to replay a wallet mutation. */
 @Value
 @Accessors(chain = true)
 public class WalletOperationModel implements IModel {
@@ -31,10 +32,12 @@ public class WalletOperationModel implements IModel {
     Instant updatedAt;
     String provider;
 
+    /** Returns the provider identifier, defaulting legacy top-ups without a provider to Stripe. */
     public String getProvider() {
         return type == WALLET_OPERATION_TYPE_TOP_UP && provider == null ? STRIPE : provider;
     }
 
+    /** Compares wallet, operation type, numeric amount, currency and effective provider for idempotent replay. */
     public boolean matches(WalletOperationModel request) {
         return walletId.equals(request.walletId) && type == request.type
                 && amount.compareTo(request.amount) == 0 && currency.equals(request.currency)

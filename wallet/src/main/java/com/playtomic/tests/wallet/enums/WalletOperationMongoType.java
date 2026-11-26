@@ -18,14 +18,17 @@ public enum WalletOperationMongoType {
     /** Stable audit label, independent of the Java constant name. */
     private final String name;
 
+    /** Returns the candidate only if it is an operational value rather than null or a sentinel. */
     public static WalletOperationMongoType validate(WalletOperationMongoType candidate) {
         return EnumLookup.requireOperational(candidate, UNSPECIFIED, ERROR, "Wallet operation type requires an operational value");
     }
 
+    /** Resolves the external name to an enum member, rejecting unknown names. */
     public static WalletOperationMongoType ofName(String name) {
         return EnumLookup.find(values(), type -> type.name.equals(name), "Unknown wallet operation type name: " + name);
     }
 
+    /** Resolves the numeric representation to an enum member, rejecting unknown values. */
     public static WalletOperationMongoType ofValue(int value) {
         return EnumLookup.find(values(), type -> type.value == value, "Unknown wallet operation type code: " + value);
     }

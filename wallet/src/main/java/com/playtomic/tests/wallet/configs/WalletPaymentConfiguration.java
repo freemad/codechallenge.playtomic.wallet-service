@@ -1,7 +1,7 @@
 package com.playtomic.tests.wallet.configs;
 
 import com.playtomic.tests.common.configs.CommonProps;
-import com.playtomic.tests.common.http.NonRetryingWebClientFactory;
+import com.playtomic.tests.common.configs.NonRetryingWebClientFactory;
 import com.playtomic.tests.common.resilience.ReactiveCircuitBreaker;
 import com.playtomic.tests.wallet.http.stripe.StripeAmountTooSmallException;
 import com.playtomic.tests.wallet.services.WalletTopUpProviders;

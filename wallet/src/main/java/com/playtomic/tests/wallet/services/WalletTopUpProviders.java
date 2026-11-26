@@ -12,14 +12,17 @@ import java.util.function.Function;
 public final class WalletTopUpProviders {
     private final Map<String, Function<CardChargeModel, Mono<PaymentReceiptModel>>> providers;
 
+    /** Registers the adapters available for top-up dispatch. */
     public WalletTopUpProviders(Map<String, Function<CardChargeModel, Mono<PaymentReceiptModel>>> providers) {
         this.providers = Map.copyOf(providers);
     }
 
+    /** Lists identifiers of configured top-up adapters, not live provider readiness. */
     public List<String> activeIds() {
         return providers.keySet().stream().sorted().toList();
     }
 
+    /** Checks whether a top-up adapter is configured for the supplied identifier. */
     public boolean isActive(String id) {
         return providers.containsKey(id);
     }

@@ -17,6 +17,7 @@ import java.time.Instant;
 
 import static com.playtomic.tests.common.utils.ExceptionNormalizer.normalize;
 
+/** Provides model-level access to wallet outbox records. */
 @Service
 @RequiredArgsConstructor
 public class WalletOutboxEntityService implements IWalletEntityService<WalletOutboxModel, WalletOutboxEntity> {
@@ -26,17 +27,20 @@ public class WalletOutboxEntityService implements IWalletEntityService<WalletOut
     private final WalletOutboxEntityMapper mapper;
     private final IWalletOutboxMongoOperations mongoOperations;
 
+    /** Persists a wallet event for later publication. */
     public Mono<Void> enqueue(WalletOutboxModel event) {
         return getMonoEntityConverter().apply(event).flatMap(repository::insert)
                 .switchIfEmpty(Mono.error(() -> normalize(new IllegalStateException("Outbox event was not inserted"))))
                 .then();
     }
 
+    /** Ensures the index used to locate wallet events eligible for publication. */
     public Mono<String> ensurePublishIndex() {
         return mongoOperations.ensurePublishIndex()
                 .switchIfEmpty(Mono.error(() -> normalize(new IllegalStateException("Outbox index was not created"))));
     }
 
+    /** Leases one eligible unpublished wallet event for delivery. */
     public Mono<WalletOutboxModel> claim(Duration lease) {
         return Mono.defer(() -> {
             Instant now = Instant.now();
@@ -45,6 +49,7 @@ public class WalletOutboxEntityService implements IWalletEntityService<WalletOut
                 .switchIfEmpty(Mono.error(() -> normalize(new IllegalStateException("Claimed event could not be mapped")))));
     }
 
+    /** Marks the claimed wallet event published only when the lease token matches. */
     public Mono<Boolean> acknowledge(WalletOutboxModel event) {
         String token = event.getLeaseToken();
         if (token == null || token.isBlank()) {

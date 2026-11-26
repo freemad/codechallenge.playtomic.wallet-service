@@ -12,68 +12,82 @@ import java.util.function.Function;
 
 /** Reuses shared reads and mapping; service writes require dedicated commands. */
 public interface IWalletEntityService<M extends IModel, E extends IEntity<String>> extends IEntityService<E, M, String> {
+    /** Returns the mapper between wallet entities and application models. */
     IEntityToModelMapper<E, M, String> getMapper();
 
+    /** Returns the deferred converter from a persistence entity to its model. */
     @Override
     default Function<E, Mono<M>> getMonoModelConverter() {
         return getMapper()::toMonoModel;
     }
 
+    /** Returns the deferred converter from a model to its persistence entity. */
     @Override
     default Function<M, Mono<E>> getMonoEntityConverter() {
         return getMapper()::toMonoEntity;
     }
 
+    /** Rejects generic writes; callers must use a wallet-specific mutation that enforces its invariants. */
     @Override
     default Mono<M> save(M model) {
         return Mono.error(unsupportedWrite());
     }
 
+    /** Rejects generic writes; callers must use a wallet-specific mutation that enforces its invariants. */
     @Override
     default Mono<M> save(Mono<M> model) {
         return Mono.error(unsupportedWrite());
     }
 
+    /** Rejects generic writes; callers must use a wallet-specific mutation that enforces its invariants. */
     @Override
     default Mono<M> update(M model) {
         return Mono.error(unsupportedWrite());
     }
 
+    /** Rejects generic writes; callers must use a wallet-specific mutation that enforces its invariants. */
     @Override
     default Flux<M> saveAll(Collection<M> models) {
         return Flux.error(unsupportedWrite());
     }
 
+    /** Rejects generic writes; callers must use a wallet-specific mutation that enforces its invariants. */
     @Override
     default Flux<M> saveAll(Flux<M> models) {
         return Flux.error(unsupportedWrite());
     }
 
+    /** Rejects generic writes; callers must use a wallet-specific mutation that enforces its invariants. */
     @Override
     default Mono<Void> delete(M model) {
         return Mono.error(unsupportedWrite());
     }
 
+    /** Rejects generic writes; callers must use a wallet-specific mutation that enforces its invariants. */
     @Override
     default Mono<Void> deleteAll(Collection<M> models) {
         return Mono.error(unsupportedWrite());
     }
 
+    /** Rejects generic writes; callers must use a wallet-specific mutation that enforces its invariants. */
     @Override
     default Mono<Void> deleteAll(Flux<M> models) {
         return Mono.error(unsupportedWrite());
     }
 
+    /** Rejects generic writes; callers must use a wallet-specific mutation that enforces its invariants. */
     @Override
     default Mono<Void> deleteAll() {
         return Mono.error(unsupportedWrite());
     }
 
+    /** Rejects generic writes; callers must use a wallet-specific mutation that enforces its invariants. */
     @Override
     default Mono<Void> deleteById(String id) {
         return Mono.error(unsupportedWrite());
     }
 
+    /** Rejects generic writes; callers must use a wallet-specific mutation that enforces its invariants. */
     @Override
     default Mono<Void> deleteAllById(Collection<String> ids) {
         return Mono.error(unsupportedWrite());

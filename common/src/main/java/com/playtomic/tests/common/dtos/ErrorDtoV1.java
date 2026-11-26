@@ -9,6 +9,7 @@ import lombok.experimental.Accessors;
 import java.io.Serial;
 import java.util.Map;
 
+/** Version-one transport representation of an application failure. */
 @Data
 @Accessors(chain = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)

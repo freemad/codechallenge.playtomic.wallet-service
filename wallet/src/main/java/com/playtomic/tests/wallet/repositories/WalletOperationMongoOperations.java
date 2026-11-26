@@ -29,12 +29,14 @@ class WalletOperationMongoOperations implements IWalletOperationMongoOperations 
 
     private final ReactiveMongoOperations mongo;
 
+    /** Ensures the index used to find operations eligible for reconciliation. */
     @Override
     public Mono<String> ensureReconciliationIndex() {
         return mongo.indexOps(WalletOperationEntity.class)
                 .createIndex(new Index().on(TYPE, ASC).on(STATUS, ASC).on(UPDATED_AT, ASC).on("_id", ASC));
     }
 
+    /** Moves a top-up to the next state only when its current state is expected. */
     @Override
     public Mono<WalletOperationEntity> transitionTopUp(String id, WalletOperationMongoStatus next,
                                                        WalletOperationMongoStatus... expected) {
@@ -42,6 +44,7 @@ class WalletOperationMongoOperations implements IWalletOperationMongoOperations 
         return Mono.defer(() -> update(criteria, changeStatus(next)));
     }
 
+    /** Records the final status and balance only if the expected state still matches. */
     @Override
     public Mono<WalletOperationEntity> finalizeOperation(String id, WalletOperationMongoStatus expected,
                                                           WalletOperationMongoStatus next, BigDecimal balance) {

@@ -13,6 +13,7 @@ import lombok.Getter;
 import java.io.Serial;
 import java.util.Map;
 
+/** Reports an application error code with optional diagnostic context and cause. */
 @Getter
 public class BusinessException
         extends RuntimeException
@@ -27,18 +28,22 @@ public class BusinessException
     private final boolean writableStackTrace;
     private final ObjectMapper mapper = new JsonMapper();
 
+    /** Creates a business failure classified by the supplied application error code. */
     public BusinessException(IErrorCode errorCode) {
         this(errorCode, "", null, false, true);
     }
 
+    /** Creates a business failure classified by the supplied application error code. */
     public BusinessException(IErrorCode errorCode, String additionalInfo) {
         this(errorCode, additionalInfo, null, false, true);
     }
 
+    /** Creates a business failure classified by the supplied application error code. */
     public BusinessException(IErrorCode errorCode, String additionalInfo, Throwable cause) {
         this(errorCode, additionalInfo, cause, false, true);
     }
 
+    /** Creates a business failure classified by the supplied application error code. */
     public BusinessException(IErrorCode errorCode, String additionalInfo, boolean enableSuppression, boolean writableStackTrace) {
         this(errorCode, additionalInfo, null, enableSuppression, writableStackTrace);
     }
@@ -58,6 +63,7 @@ public class BusinessException
         this.writableStackTrace = writableStackTrace;
     }
 
+    /** Wraps this exception in a Jackson POJO node. */
     public POJONode toJson() {
         return new POJONode(this);
     }
@@ -77,6 +83,7 @@ public class BusinessException
         }
     }
 
+    /** Returns the deepest cause, or null if no cause was attached. */
     public Throwable getRootCause() {
         var rootCause = getCause();
         while (rootCause != null && rootCause.getCause() != null) {
@@ -85,6 +92,7 @@ public class BusinessException
         return rootCause;
     }
 
+    /** Builds an application error with the exception's code and generated message. */
     public Error toError(Map<String, String> params) {
         return new Error()
                 .setCode(errorCode)
@@ -92,6 +100,7 @@ public class BusinessException
                 .setParams(params);
     }
 
+    /** Builds an application error with the exception's code and generated message. */
     public Error toError() {
         return this.toError(null);
     }

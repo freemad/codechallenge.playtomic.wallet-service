@@ -6,6 +6,7 @@ import org.springframework.util.Assert;
 
 import java.time.Duration;
 
+/** Controls batch publication, claim leases and send deadlines for wallet events. */
 @Value
 @ConfigurationProperties(WalletOutboxProps.PREFIX)
 public class WalletOutboxProps {
@@ -16,6 +17,7 @@ public class WalletOutboxProps {
     Duration sendTimeout;
     int batchSize;
 
+    /** Binds the settings for wallet outbox. */
     public WalletOutboxProps(Duration interval, String topic, Duration claimLease, Duration sendTimeout, int batchSize) {
         Assert.isTrue(interval != null && interval.isPositive(), PREFIX + ".interval must be positive");
         Assert.hasText(topic, PREFIX + ".topic must not be blank");

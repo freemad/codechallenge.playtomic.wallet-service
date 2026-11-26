@@ -8,6 +8,7 @@ import com.playtomic.tests.common.utils.EnumLookup;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
+/** Tracks a wallet mutation from reservation to its recorded outcome. */
 @Getter
 @RequiredArgsConstructor
 @JsonFormat(shape = JsonFormat.Shape.OBJECT)
@@ -26,16 +27,19 @@ public enum WalletOperationStatus {
     private final short value;
     private final String name;
 
+    /** Returns the candidate only if it is an operational value rather than null or a sentinel. */
     public static WalletOperationStatus validate(WalletOperationStatus candidate) {
         return EnumLookup.requireOperational(candidate, WALLET_OPERATION_STATUS_UNSPECIFIED,
                 WALLET_OPERATION_STATUS_ERROR, "Wallet operation status requires an operational value");
     }
 
+    /** Resolves the numeric representation to an enum member, rejecting unknown values. */
     @JsonCreator(mode = JsonCreator.Mode.PROPERTIES)
     public static WalletOperationStatus ofValue(@JsonProperty(value = "value", required = true) short value) {
         return EnumLookup.find(values(), status -> status.value == value, "Unknown WalletOperationStatus value: " + value);
     }
 
+    /** Resolves the external name to an enum member, rejecting unknown names. */
     public static WalletOperationStatus ofName(String name) {
         return EnumLookup.find(values(), status -> status.name.equals(name), "Unknown WalletOperationStatus name: " + name);
     }

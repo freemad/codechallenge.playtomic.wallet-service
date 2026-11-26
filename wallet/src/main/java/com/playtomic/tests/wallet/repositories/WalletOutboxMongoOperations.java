@@ -24,12 +24,14 @@ class WalletOutboxMongoOperations implements IWalletOutboxMongoOperations {
 
     private final ReactiveMongoOperations mongo;
 
+    /** Ensures the index used to locate wallet events eligible for publication. */
     @Override
     public Mono<String> ensurePublishIndex() {
         return mongo.indexOps(WalletOutboxEntity.class)
                 .createIndex(new Index().on(PUBLISHED_AT, ASC).on(AVAILABLE_AT, ASC).on("_id", ASC));
     }
 
+    /** Leases one eligible unpublished wallet event for delivery. */
     @Override
     public Mono<WalletOutboxEntity> claim(Instant now, Instant availableAt, String token) {
         var due = Query.query(Criteria.where(PUBLISHED_AT).isNull().and(AVAILABLE_AT).lte(now))

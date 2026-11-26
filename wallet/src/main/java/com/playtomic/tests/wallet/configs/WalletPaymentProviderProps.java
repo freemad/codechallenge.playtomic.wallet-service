@@ -11,6 +11,7 @@ import java.util.Map;
 
 import static com.playtomic.tests.wallet.constants.StripeParam.PAYMENT_ID_PLACEHOLDER;
 
+/** Binds endpoint and timeout settings by payment provider identifier. */
 @Getter
 @ConfigurationProperties("wallet")
 public final class WalletPaymentProviderProps {
@@ -20,6 +21,7 @@ public final class WalletPaymentProviderProps {
 
     private final Map<String, Provider> paymentProviders;
 
+    /** Binds the settings for wallet payment provider. */
     public WalletPaymentProviderProps(Map<String, Provider> paymentProviders) {
         this.paymentProviders = paymentProviders == null ? Map.of() : Map.copyOf(paymentProviders);
         var stripe = provider(STRIPE);
@@ -32,12 +34,14 @@ public final class WalletPaymentProviderProps {
         validateEndpoint(provider(REDSYS).getAuthorizationUri(), "redsys.authorization-uri");
     }
 
+    /** Returns configuration for the named provider, rejecting an unconfigured name. */
     public Provider provider(String name) {
         var settings = paymentProviders.get(name);
         Assert.notNull(settings, "Missing configuration for wallet.payment-providers." + name);
         return settings;
     }
 
+    /** Defines the endpoints, timeouts and local top-up policy for one provider. */
     @Getter
     public static final class Provider {
         private final URI chargesUri;
@@ -49,6 +53,7 @@ public final class WalletPaymentProviderProps {
         private final boolean topUpEnabled;
         private final URI localTopUpAllowedChargeUri;
 
+        /** Binds the settings for one payment provider. */
         public Provider(URI chargesUri, String refundsUri, URI ordersUri, URI authorizationUri,
                         @DefaultValue("2s") Duration connectTimeout,
                         @DefaultValue("5s") Duration requestTimeout,

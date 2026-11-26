@@ -8,6 +8,7 @@ import lombok.Value;
 import java.io.Serial;
 import java.math.BigDecimal;
 
+/** Reports the recorded state of a top-up and its resulting balance when credited. */
 @Value
 @JsonIgnoreProperties({"type", "version"})
 public class WalletTopUpResponseDtoV1 implements IDto {

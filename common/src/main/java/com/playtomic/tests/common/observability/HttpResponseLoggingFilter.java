@@ -16,6 +16,7 @@ import java.util.concurrent.TimeUnit;
 public final class HttpResponseLoggingFilter implements WebFilter {
     private final StructuredEvents events;
 
+    /** Observes the HTTP exchange while delegating request processing to the remaining filter chain. */
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
         long start = System.nanoTime();

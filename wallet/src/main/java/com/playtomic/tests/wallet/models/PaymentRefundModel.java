@@ -5,6 +5,7 @@ import lombok.Value;
 
 import java.io.Serial;
 
+/** Identifies the provider payment to refund; this is not a wallet purchase return. */
 @Value
 public class PaymentRefundModel implements IModel {
     @Serial
@@ -12,6 +13,7 @@ public class PaymentRefundModel implements IModel {
 
     String paymentId;
 
+    /** Identifies the original payment to refund. */
     public PaymentRefundModel(String paymentId) {
         if (paymentId == null || paymentId.isBlank()) {
             throw new IllegalArgumentException("Provider payment ID is required");

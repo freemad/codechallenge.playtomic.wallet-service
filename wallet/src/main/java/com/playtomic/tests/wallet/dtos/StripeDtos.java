@@ -16,16 +16,20 @@ import java.math.BigDecimal;
 import static com.playtomic.tests.wallet.constants.StripeParam.AMOUNT_FIELD;
 import static com.playtomic.tests.wallet.constants.StripeParam.CREDIT_CARD_FIELD;
 
+/** Groups request and receipt types for the Stripe simulator protocol. */
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class StripeDtos {
+    /** Provides the version shared by Stripe transport objects. */
     @JsonIgnoreProperties({"type", "version"})
     public interface StripeDto extends IDto {
+        /** Returns the version of the transport representation. */
         @Override
         default String getVersion() {
             return "1";
         }
     }
 
+    /** Carries the card and amount sent to the charge endpoint. */
     @Value
     public static class ChargeRequestDto implements StripeDto {
         @Serial
@@ -40,12 +44,14 @@ public final class StripeDtos {
         @JsonProperty(AMOUNT_FIELD)
         BigDecimal amount;
 
+        /** Returns the transport type discriminator. */
         @Override
         public String getType() {
             return "stripe-charge-request";
         }
     }
 
+    /** Carries the receipt identifier returned by the charge endpoint. */
     @Value
     public static class ChargeReceiptDto implements StripeDto {
         @Serial
@@ -53,6 +59,7 @@ public final class StripeDtos {
 
         String id;
 
+        /** Creates a wire receipt for the supplied payment identifier. */
         @JsonCreator
         public ChargeReceiptDto(@JsonProperty(value = "id", required = true) String id) {
             if (id == null || id.isBlank()) {
@@ -61,12 +68,14 @@ public final class StripeDtos {
             this.id = id;
         }
 
+        /** Returns the transport type discriminator. */
         @Override
         public String getType() {
             return "stripe-charge-receipt";
         }
     }
 
+    /** Identifies the payment to refund through the provider. */
     @Value
     public static class RefundRequestDto implements StripeDto {
         @Serial
@@ -75,6 +84,7 @@ public final class StripeDtos {
         @NonNull
         String paymentId;
 
+        /** Returns the transport type discriminator. */
         @Override
         public String getType() {
             return "stripe-refund-request";

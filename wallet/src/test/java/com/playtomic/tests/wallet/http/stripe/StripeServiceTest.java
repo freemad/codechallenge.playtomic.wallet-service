@@ -2,7 +2,7 @@ package com.playtomic.tests.wallet.http.stripe;
 
 import com.playtomic.tests.common.enums.CommonErrorCode;
 import com.playtomic.tests.common.exceptions.BusinessException;
-import com.playtomic.tests.common.http.NonRetryingWebClientFactory;
+import com.playtomic.tests.common.configs.NonRetryingWebClientFactory;
 import com.playtomic.tests.wallet.configs.WalletPaymentProviderProps;
 import com.playtomic.tests.wallet.mappers.StripePaymentMapper;
 import com.playtomic.tests.wallet.models.CardChargeModel;

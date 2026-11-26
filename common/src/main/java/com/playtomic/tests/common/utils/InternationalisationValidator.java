@@ -8,6 +8,7 @@ import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
 
+/** Checks currency codes and locale tags against values known to the running JRE. */
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class InternationalisationValidator {
 

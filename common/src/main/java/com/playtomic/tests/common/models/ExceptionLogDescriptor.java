@@ -8,6 +8,7 @@ import lombok.experimental.Accessors;
 import java.io.Serial;
 import java.util.List;
 
+/** Carries diagnostic context for logging a failed call. */
 @Data
 @Accessors(chain = true)
 @NoArgsConstructor

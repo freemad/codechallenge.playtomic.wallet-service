@@ -18,6 +18,7 @@ import java.io.Serial;
 import java.math.BigDecimal;
 import java.time.Instant;
 
+/** Stores a wallet event and the lease and acknowledgment state for its publication. */
 @Value
 @Accessors(chain = true)
 @RequiredArgsConstructor
