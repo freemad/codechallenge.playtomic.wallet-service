@@ -34,6 +34,18 @@ public class WalletEntity implements IEntity<String> {
 
     String currency;
 
+    @NonFinal
+    Long ledgerSequence;
+    @NonFinal
+    Long auditedLedgerSequence;
+    @NonFinal
+    @Field(targetType = FieldType.DECIMAL128)
+    BigDecimal calculatedBalance;
+    @NonFinal
+    java.time.Instant calculationTimestamp;
+    @NonFinal
+    java.time.Instant cutoffAt;
+
     @Transient
     @NonFinal
     @Setter

@@ -1,6 +1,7 @@
 package com.playtomic.tests.wallet.repositories;
 
 import com.playtomic.tests.wallet.entities.WalletEntity;
+import com.playtomic.tests.wallet.entities.WalletPostingEntity;
 import org.bson.types.Decimal128;
 import org.springframework.data.mongodb.core.FindAndModifyOptions;
 import org.springframework.data.mongodb.core.ReactiveMongoOperations;
@@ -29,8 +30,10 @@ class WalletBalanceMongoOperations implements IWalletBalanceMongoOperations {
         return Mono.defer(() -> {
             var criteria = Criteria.where("id").is(id).and("currency").is(currency);
             minimumBalance.ifPresent(minimum -> criteria.and(BALANCE).gte(new Decimal128(minimum)));
-            return mongo.findAndModify(Query.query(criteria), new Update().inc(BALANCE, new Decimal128(delta)),
-                    FindAndModifyOptions.options().returnNew(true), WalletEntity.class);
+            return mongo.findAndModify(Query.query(criteria), new Update().inc(BALANCE, new Decimal128(delta)).inc("ledgerSequence", 1L),
+                    FindAndModifyOptions.options().returnNew(true), WalletEntity.class)
+                    .flatMap(wallet -> mongo.insert(new WalletPostingEntity(id + ":" + wallet.getLedgerSequence(), id,
+                            wallet.getLedgerSequence(), currency, delta)).thenReturn(wallet));
         });
     }
 }
