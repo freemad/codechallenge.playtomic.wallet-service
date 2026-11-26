@@ -19,6 +19,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.regex.Pattern;
 
+import static com.playtomic.tests.simulator.observability.SimulationOutcome.*;
+
 /** Inbound adapter for a local-only Redsys REST authorization fixture. */
 @RestController
 @RequiredArgsConstructor
@@ -44,27 +46,27 @@ public class RedsysSimulationController {
         if (!FIXTURE_VERSION.equals(text(envelope, SIGNATURE_VERSION))
                 || !FIXTURE_SIGNATURE.equals(text(envelope, SIGNATURE))
                 || encoded.length() > MAX_ENCODED_LENGTH) {
-            return Mono.just(ResponseEntity.badRequest().build());
+            return REDSYS_INVALID.observe(Mono.just(ResponseEntity.badRequest().build()));
         }
 
         JsonNode parameters;
         try {
             parameters = json.readTree(Base64.getUrlDecoder().decode(encoded));
         } catch (IllegalArgumentException | JacksonException invalidInput) {
-            return Mono.just(ResponseEntity.badRequest().build());
+            return REDSYS_INVALID.observe(Mono.just(ResponseEntity.badRequest().build()));
         }
         String order = text(parameters, "DS_MERCHANT_ORDER");
         String amount = text(parameters, "DS_MERCHANT_AMOUNT");
         if (!ORDER.matcher(order).matches() || !AMOUNT.matcher(amount).matches()
                 || !CURRENCY.equals(text(parameters, "DS_MERCHANT_CURRENCY"))
                 || !AUTHORIZATION.equals(text(parameters, "DS_MERCHANT_TRANSACTIONTYPE"))) {
-            return Mono.just(ResponseEntity.badRequest().build());
+            return REDSYS_INVALID.observe(Mono.just(ResponseEntity.badRequest().build()));
         }
 
         return switch (properties.getScenario()) {
-            case SUCCESS -> Mono.just(result(order, amount, true));
-            case REJECT -> Mono.just(result(order, amount, false));
-            case TIMEOUT -> SimulationResponses.timeout();
+            case SUCCESS -> APPROVED.observe(Mono.just(result(order, amount, true)));
+            case REJECT -> REDSYS_DECLINED.observe(Mono.just(result(order, amount, false)));
+            case TIMEOUT -> REDSYS_TIMEOUT.observe(SimulationResponses.timeout());
         };
     }
 
@@ -88,4 +90,3 @@ public class RedsysSimulationController {
         return value.isString() ? value.asString() : "";
     }
 }
-

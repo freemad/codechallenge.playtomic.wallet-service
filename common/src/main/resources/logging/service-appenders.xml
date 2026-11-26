@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<included>
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="org.springframework.boot.logging.logback.StructuredLogEncoder">
+            <format>logstash</format>
+        </encoder>
+    </appender>
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+
+    <springProfile name="log-file">
+        <appender name="ROLLING_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <file>${filePath}</file>
+            <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+                <fileNamePattern>${filePath}.%d{yyyy-MM-dd}.%i.gz</fileNamePattern>
+                <maxFileSize>20MB</maxFileSize>
+                <maxHistory>7</maxHistory>
+                <totalSizeCap>200MB</totalSizeCap>
+            </rollingPolicy>
+            <encoder class="org.springframework.boot.logging.logback.StructuredLogEncoder">
+                <format>logstash</format>
+            </encoder>
+        </appender>
+        <appender name="ASYNC_FILE" class="ch.qos.logback.classic.AsyncAppender">
+            <neverBlock>true</neverBlock>
+            <appender-ref ref="ROLLING_FILE"/>
+        </appender>
+        <root><appender-ref ref="ASYNC_FILE"/></root>
+    </springProfile>
+
+    <springProfile name="log-elastic">
+        <appender name="ELASTIC" class="net.logstash.logback.appender.LogstashTcpSocketAppender">
+            <destination>${collector}</destination>
+            <ssl><parameters><hostnameVerification>true</hostnameVerification></parameters></ssl>
+            <encoder class="org.springframework.boot.logging.logback.StructuredLogEncoder">
+                <format>logstash</format>
+            </encoder>
+        </appender>
+        <root><appender-ref ref="ELASTIC"/></root>
+    </springProfile>
+</included>

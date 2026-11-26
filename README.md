@@ -261,8 +261,9 @@ return the recorded result, not the current wallet balance.
   with `WALLET_OUTBOX_TOPIC`). Events use the wallet ID as the Kafka key.
   Delivery is at least once: consumers must deduplicate by `eventId` and
   must not assume Mongo commit order across concurrent relay workers.
-- Wallet operation timers and result counters use bounded tags. Workers log
-  sanitized failures and stale payments that need review. Alert routing and
+- Wallet operation timers and result counters use bounded tags. See the
+  [wallet logging contract](docs/wallet-logging.md) for JSON fields, event levels,
+  redaction rules, and how to enable wallet-only debug logging. Alert routing and
   trace export depend on the deployment's observability stack.
 
 A production write contract is not defined. Production top-up would require

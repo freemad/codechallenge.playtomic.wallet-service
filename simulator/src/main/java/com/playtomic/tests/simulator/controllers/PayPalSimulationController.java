@@ -24,6 +24,8 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Pattern;
 
+import static com.playtomic.tests.simulator.observability.SimulationOutcome.*;
+
 /** Inbound adapter for the local PayPal Orders fixture. */
 @RestController
 @RequestMapping("/v1/paypal-simulator/v2/checkout/orders")
@@ -43,49 +45,49 @@ public class PayPalSimulationController {
     public ResponseEntity<Map<String, ?>> create(@RequestBody JsonNode request) {
         var units = request.path("purchase_units");
         if (!"CAPTURE".equals(request.path("intent").asString()) || !units.isArray() || units.size() != 1) {
-            return error(HttpStatus.BAD_REQUEST, "INVALID_REQUEST");
+            return ORDER_INVALID.record(error(HttpStatus.BAD_REQUEST, "INVALID_REQUEST"));
         }
         var amount = units.path(0).path("amount");
         var value = amount.path("value");
         if (!CURRENCY.equals(amount.path("currency_code").asString()) || !value.isString()
                 || !DECIMAL_AMOUNT.matcher(value.asString()).matches()) {
-            return error(HttpStatus.BAD_REQUEST, "INVALID_REQUEST");
+            return ORDER_INVALID.record(error(HttpStatus.BAD_REQUEST, "INVALID_REQUEST"));
         }
         var decimal = new BigDecimal(value.asString());
         if (decimal.signum() <= 0) {
-            return error(HttpStatus.BAD_REQUEST, "INVALID_REQUEST");
+            return ORDER_INVALID.record(error(HttpStatus.BAD_REQUEST, "INVALID_REQUEST"));
         }
         if (!capacity.tryAcquire()) {
-            return error(HttpStatus.SERVICE_UNAVAILABLE, "ORDER_LIMIT_REACHED");
+            return ORDER_LIMIT.record(error(HttpStatus.SERVICE_UNAVAILABLE, "ORDER_LIMIT_REACHED"));
         }
 
         String id = UuidV7Generator.generate().toString();
         orders.put(id, new Order(decimal.setScale(2).toPlainString()));
-        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("id", id, "status", "APPROVED"));
+        return ORDER_CREATED.record(ResponseEntity.status(HttpStatus.CREATED).body(Map.of("id", id, "status", "APPROVED")));
     }
 
     @PostMapping("/{orderId}/capture")
     public Mono<ResponseEntity<Map<String, ?>>> capture(@PathVariable String orderId) {
         var order = orders.get(orderId);
         if (order == null) {
-            return Mono.just(error(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND"));
+            return ORDER_MISSING.observe(Mono.just(error(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND")));
         }
         return switch (properties.getScenario()) {
             case SUCCESS -> Mono.fromSupplier(() -> complete(orderId, order));
-            case REJECT -> Mono.just(captureError("INSTRUMENT_DECLINED"));
-            case TIMEOUT -> SimulationResponses.timeout();
+            case REJECT -> CAPTURE_DECLINED.observe(Mono.just(captureError("INSTRUMENT_DECLINED")));
+            case TIMEOUT -> CAPTURE_TIMEOUT.observe(SimulationResponses.timeout());
         };
     }
 
     private static ResponseEntity<Map<String, ?>> complete(String orderId, Order order) {
         if (!order.captured.compareAndSet(false, true)) {
-            return captureError("ORDER_ALREADY_CAPTURED");
+            return CAPTURE_REPLAY.record(captureError("ORDER_ALREADY_CAPTURED"));
         }
         var capture = Map.of("id", UuidV7Generator.generate().toString(), "status", "COMPLETED",
                 "amount", Map.of("currency_code", CURRENCY, "value", order.amount));
         var unit = Map.of("payments", Map.of("captures", List.of(capture)));
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(Map.of("id", orderId, "status", "COMPLETED", "purchase_units", List.of(unit)));
+        return CAPTURED.record(ResponseEntity.status(HttpStatus.CREATED)
+                .body(Map.of("id", orderId, "status", "COMPLETED", "purchase_units", List.of(unit))));
     }
 
     private static ResponseEntity<Map<String, ?>> error(HttpStatus status, String name) {
@@ -103,4 +105,3 @@ public class PayPalSimulationController {
         private final AtomicBoolean captured = new AtomicBoolean();
     }
 }
-

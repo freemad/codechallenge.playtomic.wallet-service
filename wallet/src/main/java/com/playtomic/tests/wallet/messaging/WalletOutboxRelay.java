@@ -7,8 +7,6 @@ import com.playtomic.tests.wallet.constants.WalletWorkerParam;
 import com.playtomic.tests.wallet.dtos.WalletBalanceEventDtoV1;
 import com.playtomic.tests.wallet.models.WalletOutboxModel;
 import com.playtomic.tests.wallet.services.entity.WalletOutboxEntityService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.EnableScheduling;
@@ -19,12 +17,12 @@ import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 import tools.jackson.databind.json.JsonMapper;
 
+import static com.playtomic.tests.wallet.observability.WalletLogEvent.*;
+
 @Component
 @EnableScheduling
 @ConditionalOnProperty(prefix = WalletOutboxProps.PREFIX, name = "enabled", havingValue = "true")
 public class WalletOutboxRelay {
-    private static final Logger log = LoggerFactory.getLogger(WalletOutboxRelay.class);
-
     private final WalletOutboxEntityService outbox;
     private final KafkaTemplate<String, String> kafka;
     private final JsonMapper json;
@@ -47,7 +45,8 @@ public class WalletOutboxRelay {
                                 .flatMap(this::send).defaultIfEmpty(false))
                         .takeUntil(published -> !published))
                 .then()
-                .onErrorMap(ExceptionNormalizer::normalize);
+                .onErrorMap(ExceptionNormalizer::normalize)
+                .doOnError(error -> RELAY_FAILED.fields().log());
     }
 
     private Mono<Boolean> send(WalletOutboxModel event) {
@@ -60,16 +59,12 @@ public class WalletOutboxRelay {
                 }, true)
                 .subscribeOn(Schedulers.boundedElastic())
                 .timeout(properties.sendTimeout())
+                .doOnNext(result -> BROKER_ACCEPTED.operation(event.getId()).log())
                 .then(Mono.defer(() -> outbox.acknowledge(event)))
-                .doOnNext(acknowledged -> {
-                    if (!acknowledged) {
-                        log.warn("Outbox acknowledgment lost its lease: eventId={}", event.getId());
-                    }
-                })
+                .doOnNext(acknowledged -> (acknowledged ? ACKNOWLEDGED : LOST_LEASE).operation(event.getId()).log())
                 .onErrorMap(ExceptionNormalizer::normalize)
                 .onErrorResume(BusinessException.class, error -> {
-                    log.warn("Outbox publish did not complete: eventId={} errorCode={}",
-                            event.getId(), error.getErrorCode().getCode());
+                    DELIVERY_INCOMPLETE.operation(event.getId()).addKeyValue("errorCode", error.getErrorCode().getCode()).log();
                     return Mono.just(false);
                 });
     }

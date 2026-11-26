@@ -23,9 +23,12 @@ import com.playtomic.tests.wallet.services.entity.WalletOutboxEntityService;
 import org.bson.Document;
 import org.bson.types.Decimal128;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTestClient;
 import org.springframework.context.ApplicationContext;
@@ -123,7 +126,8 @@ class WalletApplicationIT {
     }
 
     @Test
-    void servesTopUpOverHttpAndReplaysWithoutChargingTwice() {
+    @ExtendWith(OutputCaptureExtension.class)
+    void servesTopUpOverHttpAndReplaysWithoutChargingTwice(CapturedOutput output) {
         String id = "http-credit";
         var charge = new CardChargeModel(HTTP_TEST_CARD, new BigDecimal("5.25"));
         when(stripe.charge(charge)).thenReturn(Mono.just(new PaymentReceiptModel("payment-http-credit")));
@@ -163,6 +167,12 @@ class WalletApplicationIT {
         webClient.get().uri(LOOKUP_PATH, id).exchange().expectStatus().isOk().expectBody()
                 .jsonPath("$.result.balance").isEqualTo(15.25);
         verify(stripe, times(1)).charge(charge);
+        var records = output.getOut().lines().filter(line -> line.startsWith("{")).map(JSON::readTree)
+                .filter(node -> "wallet.events".equals(node.path("logger_name").asString(""))).toList();
+        assertThat(records.toString()).doesNotContain(HTTP_TEST_CARD, "same-key", id, "payment-http-credit");
+        assertThat(records.stream().filter(node -> operationId.equals(node.path("operationId").asString("")))
+                .map(node -> node.path("event").asString()).toList()).containsExactly(
+                "operation.reserved", "payment.dispatch", "payment.receipt_returned", "receipt.committed", "operation.finalized");
     }
 
     @Test
@@ -391,7 +401,8 @@ class WalletApplicationIT {
     }
 
     @Test
-    void recordedReceiptSurvivesAFailedOutboxWriteAndCanBeAppliedLater() {
+    @ExtendWith(OutputCaptureExtension.class)
+    void recordedReceiptSurvivesAFailedOutboxWriteAndCanBeAppliedLater(CapturedOutput output) {
         String id = "receipt-recovery-operation";
         var request = new WalletOperationModel(id, "receipt-recovery", WALLET_OPERATION_TYPE_TOP_UP,
                 new BigDecimal("2.00"), "EUR", WALLET_OPERATION_STATUS_PENDING, null, Instant.now(), "stripe");
@@ -403,6 +414,7 @@ class WalletApplicationIT {
                         .then(mongo.insert(new Document("_id", id), "wallet_outbox"))
                         .then(operations.apply(id)))
                 .expectError(org.springframework.dao.DuplicateKeyException.class).verify(DEADLINE);
+        assertThat(output.getOut()).contains("\"event\":\"receipt.committed\"").doesNotContain("\"event\":\"operation.finalized\"");
         StepVerifier.create(operations.find(id).map(WalletApplicationIT::presentResult)
                 .zipWith(wallets.findById("receipt-recovery").map(WalletApplicationIT::successfulResult)))
                 .assertNext(pair -> {
