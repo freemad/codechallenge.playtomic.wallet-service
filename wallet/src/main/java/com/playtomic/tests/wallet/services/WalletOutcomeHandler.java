@@ -8,6 +8,7 @@ import com.playtomic.tests.wallet.enums.WalletErrorCode;
 import com.playtomic.tests.wallet.exceptions.WalletNotFoundException;
 import com.playtomic.tests.wallet.models.WalletModel;
 import com.playtomic.tests.wallet.models.WalletOperationModel;
+import com.playtomic.tests.wallet.observability.WalletLogEvent;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
@@ -22,7 +23,14 @@ public class WalletOutcomeHandler {
 
     public Mono<Outcome<WalletOperationModel, Error>> mutation(Mono<WalletOperationModel> result) {
         // A returned operation is result data even when its status is rejection or requires review.
-        return prepare(result);
+        return prepare(result).doOnNext(outcome -> {
+            if (outcome.isFailure()) {
+                var code = outcome.getError().getCode();
+                var event = code instanceof WalletErrorCode && code != WalletErrorCode.BALANCE_UPDATE_NOT_MATCHED
+                        ? WalletLogEvent.MUTATION_REJECTED : WalletLogEvent.MUTATION_FAILED;
+                event.fields().addKeyValue("errorCode", code.getCode()).log();
+            }
+        });
     }
 
     private static <T> Mono<Outcome<T, Error>> prepare(Mono<T> result) {

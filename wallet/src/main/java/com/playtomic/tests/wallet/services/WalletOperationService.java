@@ -12,6 +12,7 @@ import com.playtomic.tests.wallet.models.WalletOperationModel;
 import com.playtomic.tests.wallet.models.WalletOutboxModel;
 import com.playtomic.tests.wallet.models.WalletOutcome;
 import com.playtomic.tests.wallet.models.WalletPaymentReceiptModel;
+import com.playtomic.tests.wallet.observability.WalletLogEvent;
 import com.playtomic.tests.wallet.services.entity.WalletEntityService;
 import com.playtomic.tests.wallet.services.entity.WalletOperationEntityService;
 import com.playtomic.tests.wallet.services.entity.WalletOutboxEntityService;
@@ -44,6 +45,16 @@ public class WalletOperationService {
     private final WalletOutboxEntityService outboxEntityService;
     private final IWalletTransactions walletTransactions;
 
+    private record Transition(WalletOperationModel operation, boolean changed) {
+        WalletOperationModel report(WalletLogEvent event) {
+            if (changed) {
+                event.operation(operation.getId()).addKeyValue("status", operation.getStatus().getName())
+                        .addKeyValue("operationType", operation.getType().getName()).log();
+            }
+            return operation;
+        }
+    }
+
     public Mono<Outcome<Optional<WalletOperationModel>, Error>> find(String id) {
         return WalletOutcome.optional(operationEntityService.findById(id));
     }
@@ -72,29 +83,34 @@ public class WalletOperationService {
                 operationEntityService.transitionTopUp(id, WALLET_OPERATION_STATUS_RECEIPT_RECORDED,
                                 WALLET_OPERATION_STATUS_PENDING, WALLET_OPERATION_STATUS_REVIEW_REQUIRED)
                         .flatMap(operation -> receiptEntityService.insert(new WalletPaymentReceiptModel(providerPaymentId, id,
-                                Instant.now())).thenReturn(operation))
-                        .switchIfEmpty(Mono.defer(() -> operationEntityService.findById(id)))))
-                .onErrorResume(walletTransactions::isDuplicateKey,
-                        ignored -> markPaymentStatus(id, WALLET_OPERATION_STATUS_REVIEW_REQUIRED)));
+                                Instant.now())).thenReturn(new Transition(operation, true)))
+                        .switchIfEmpty(Mono.defer(() -> operationEntityService.findById(id).map(existing -> new Transition(existing, false))))))
+                .map(change -> change.report(WalletLogEvent.RECEIPT_COMMITTED))
+                .onErrorResume(walletTransactions::isDuplicateKey, ignored -> {
+                    WalletLogEvent.DUPLICATE_RECEIPT.operation(id).log();
+                    return markPaymentStatus(id, WALLET_OPERATION_STATUS_REVIEW_REQUIRED);
+                }));
     }
 
     /** Only local work is retried. A recorded receipt stays recoverable if this transaction fails. */
     public Mono<Outcome<Optional<WalletOperationModel>, Error>> apply(String id) {
-        return WalletOutcome.optional(walletTransactions.execute(Mono.defer(() -> operationEntityService.findById(id).flatMap(operation -> {
+        Mono<Transition> work = Mono.defer(() -> operationEntityService.findById(id).flatMap(operation -> {
             boolean debit = operation.getType() == WALLET_OPERATION_TYPE_SPEND
                     && operation.getStatus() == WALLET_OPERATION_STATUS_PENDING;
             boolean credit = operation.getType() == WALLET_OPERATION_TYPE_TOP_UP
                     && operation.getStatus() == WALLET_OPERATION_STATUS_RECEIPT_RECORDED;
             if (!debit && !credit) {
-                return Mono.just(operation);
+                return Mono.just(new Transition(operation, false));
             }
             return entityService.findById(operation.getWalletId())
                     .filter(wallet -> wallet.getCurrency().equals(operation.getCurrency()))
                     .flatMap(wallet -> applyToWallet(operation, wallet, debit))
                     .switchIfEmpty(Mono.defer(() -> debit ? finish(operation, WALLET_OPERATION_STATUS_WALLET_UNAVAILABLE, null)
                             : Mono.error(() -> normalize(new IllegalStateException(
-                                    "Recorded payment wallet or currency unavailable")))));
-        }))));
+                                    "Recorded payment wallet or currency unavailable")))))
+                    .map(updated -> new Transition(updated, true));
+        }));
+        return WalletOutcome.optional(walletTransactions.execute(work).map(change -> change.report(WalletLogEvent.FINALIZED)));
     }
 
     private Mono<WalletOperationModel> applyToWallet(WalletOperationModel operation, WalletModel wallet,

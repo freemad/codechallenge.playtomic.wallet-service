@@ -29,6 +29,7 @@ import static com.playtomic.tests.wallet.enums.WalletOperationStatus.*;
 import static com.playtomic.tests.wallet.enums.WalletOperationType.WALLET_OPERATION_TYPE_SPEND;
 import static com.playtomic.tests.wallet.enums.WalletOperationType.WALLET_OPERATION_TYPE_TOP_UP;
 import static com.playtomic.tests.wallet.exceptions.WalletMutationException.Reason.*;
+import static com.playtomic.tests.wallet.observability.WalletLogEvent.*;
 
 @Service
 @RequiredArgsConstructor
@@ -82,7 +83,9 @@ public class WalletMutationService {
                             return Mono.error(new WalletMutationException(CURRENCY_MISMATCH,
                                     "Operation currency must match the wallet"));
                         }
-                        return operationService.reserve(request).flatMap(WalletOutcome::optionalValue).flatMap(onReserved)
+                        return operationService.reserve(request).flatMap(WalletOutcome::optionalValue)
+                                .doOnNext(winner -> RESERVED.operation(id).addKeyValue("operationType", request.getType().getName()).log())
+                                .flatMap(onReserved)
                                 .switchIfEmpty(Mono.defer(() -> operationService.find(id)
                                         .flatMap(WalletOutcome::optionalValue)
                                         .switchIfEmpty(Mono.error(() -> new IllegalStateException(
@@ -94,9 +97,11 @@ public class WalletMutationService {
 
     private Mono<WalletOperationModel> replay(WalletOperationModel existing, WalletOperationModel request) {
         if (!existing.matches(request)) {
+            CONFLICT.operation(existing.getId()).log();
             return Mono.error(new WalletMutationException(IDEMPOTENCY_CONFLICT,
                     "Idempotency key already identifies a different operation"));
         }
+        REPLAY.operation(existing.getId()).addKeyValue("status", existing.getStatus().getName()).log();
         if (existing.getStatus() == WALLET_OPERATION_STATUS_RECEIPT_RECORDED
                 || (existing.getType() == WALLET_OPERATION_TYPE_SPEND && existing.getStatus() == WALLET_OPERATION_STATUS_PENDING)) {
             return apply(existing.getId());
@@ -107,22 +112,29 @@ public class WalletMutationService {
     private Mono<WalletOperationModel> charge(WalletOperationModel operation, String card) {
         String id = operation.getId();
         // Only errors from this provider call are classified as payment outcomes. DB errors propagate.
-        return walletPaymentCircuitBreaker.protect(metrics.charge(Mono.defer(() ->
-                        paymentProviders.charge(operation.getProvider(), new CardChargeModel(card, operation.getAmount())))))
+        return walletPaymentCircuitBreaker.protect(metrics.charge(Mono.defer(() -> {
+                    DISPATCH.operation(id).log();
+                    return paymentProviders.charge(operation.getProvider(), new CardChargeModel(card, operation.getAmount()))
+                            .doOnCancel(() -> CANCELLED.operation(id).log());
+                })))
                 .materialize().flatMap(signal -> {
                     if (signal.isOnNext()) {
+                        RECEIVED.operation(id).log();
                         return operationService.recordReceipt(id, signal.get().getId()).flatMap(WalletOutcome::optionalValue)
                                 .flatMap(recorded -> recorded.getStatus() == WALLET_OPERATION_STATUS_RECEIPT_RECORDED
                                         ? apply(id) : Mono.just(recorded));
                     }
                     Throwable error = signal.getThrowable();
                     if (error instanceof StripeAmountTooSmallException) {
+                        DECLINED.operation(id).log();
                         return operationService.markPaymentOutcome(id, WALLET_OPERATION_STATUS_PAYMENT_REJECTED).flatMap(WalletOutcome::optionalValue);
                     }
                     if (error instanceof CallNotPermittedException) {
+                        BREAKER_OPEN.operation(id).log();
                         return operationService.markPaymentOutcome(id, WALLET_OPERATION_STATUS_PROVIDER_UNAVAILABLE).flatMap(WalletOutcome::optionalValue);
                     }
                     if (error == null || error instanceof StripeServiceException) {
+                        UNCONFIRMED.operation(id).log();
                         return operationService.markPaymentOutcome(id, WALLET_OPERATION_STATUS_REVIEW_REQUIRED).flatMap(WalletOutcome::optionalValue);
                     }
                     return Mono.error(error);
