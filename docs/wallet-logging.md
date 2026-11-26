@@ -30,6 +30,8 @@ Both optional appenders use bounded asynchronous buffers and can drop records un
 
 ## Local Kafka Connect → Elasticsearch with Compose
 
+These commands require the optional monitoring checkout, not the base stack. See [local monitoring availability](local-monitoring.md) first.
+
 Wallet and simulator send TLS JSON lines to Vector. It filters for `wallet.events` and `simulator.events` and allowlists fields **before** producing to `service.logs.v1`: framework logs, raw messages and request/operation IDs are not forwarded. Kafka Connect `8.1.0` consumes that topic and writes to the `service.logs.v1` index on Elasticsearch `8.19.26`. The worker image adds Confluent’s Elasticsearch sink `15.1.5` (Confluent Community License) at build time. No Schema Registry or Spring Elasticsearch client is needed. Actuator remains in the services; service metrics are not exported to Elasticsearch.
 
 From the repository root, set two private passwords once per stack; keep them for subsequent starts with the same volumes:

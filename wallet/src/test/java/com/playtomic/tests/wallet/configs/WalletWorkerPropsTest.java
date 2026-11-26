@@ -90,7 +90,8 @@ class WalletWorkerPropsTest {
             "wallet.reconciliation.lease=25s, wallet.reconciliation.lease must be longer than run-timeout",
             "wallet.outbox.claim-lease=20s, wallet.outbox.claim-lease must be longer than send-timeout to allow acknowledgment",
             "wallet.outbox.batch-size=0, wallet.outbox.batch-size must be positive",
-            "wallet.outbox.topic=, wallet.outbox.topic must not be blank"
+            "wallet.outbox.topic=, wallet.outbox.topic must not be blank",
+            "wallet.audit.interval=0s, wallet.audit.interval must be positive"
     })
     void rejectsInvalidSettingsEvenWhenWorkersAreDisabled(String property, String message) {
         runner.withPropertyValues(property).run(context -> {
@@ -106,6 +107,7 @@ class WalletWorkerPropsTest {
             var env = context.getEnvironment();
             assertThat(env.getProperty("wallet.audit.enabled")).isEqualTo("false");
             assertThat(env.getProperty("wallet.audit.interval")).isEqualTo("10s");
+            assertThat(audit.getInterval()).isEqualTo(Duration.ofSeconds(10));
             assertThat(audit.getLease()).isEqualTo(Duration.ofMinutes(1));
             assertThat(audit.getTimeout()).isEqualTo(Duration.ofSeconds(40));
             assertThat(env.getProperty("spring.kafka.producer.properties.delivery.timeout.ms")).isEqualTo("15000");
@@ -126,6 +128,7 @@ class WalletWorkerPropsTest {
             var env = context.getEnvironment();
             assertThat(env.getProperty("wallet.audit.enabled")).isEqualTo("true");
             assertThat(env.getProperty("wallet.audit.interval")).isEqualTo("3s");
+            assertThat(audit.getInterval()).isEqualTo(Duration.ofSeconds(3));
             assertThat(audit.getLease()).isEqualTo(Duration.ofSeconds(30));
             assertThat(audit.getTimeout()).isEqualTo(Duration.ofSeconds(20));
             assertThat(env.getProperty("spring.kafka.producer.properties.delivery.timeout.ms")).isEqualTo("9000");

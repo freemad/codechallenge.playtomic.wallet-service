@@ -57,6 +57,22 @@ class WalletBalanceAuditIT {
     @Autowired GenericContainer<?> auditProxy;
 
     @Test
+    void replacementAlertClaimFencesThePreviousPublisher() {
+        String alerts = "wallet_audit_alert_outbox";
+        Instant now = Instant.now();
+        String id = "audit-fence";
+        mongo.insert(new Document("_id", id).append("availableAt", Date.from(now)), alerts).block(LIMIT);
+        var first = store.claimAlert(now, LIMIT).block(LIMIT);
+        var next = store.claimAlert(now.plus(LIMIT), LIMIT).block(LIMIT);
+        assertThat(next.id()).isEqualTo(id);
+        assertThat(next.token()).isNotEqualTo(first.token());
+        assertThat(store.acknowledge(first).block(LIMIT)).isFalse();
+        assertThat(mongo.findById(id, Document.class, alerts).block(LIMIT)).doesNotContainKey("publishedAt");
+        assertThat(store.acknowledge(next).block(LIMIT)).isTrue();
+        assertThat(store.acknowledge(next).block(LIMIT)).isFalse();
+    }
+
+    @Test
     void delayedCompetingWorkersCheckTheHistoricalBalanceNotTheLiveBalance() {
         String id = "audit-correct";
         seed(id);

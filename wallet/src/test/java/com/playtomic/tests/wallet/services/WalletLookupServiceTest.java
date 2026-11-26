@@ -62,6 +62,8 @@ class WalletLookupServiceTest {
     @Test
     void doesNotTurnControlFlowTransportStatusesOrJvmErrorsIntoOutcomes() {
         for (Throwable failure : List.of(new CancellationException(), new InterruptedException(),
+                new BusinessException(CommonErrorCode.INTERNAL_SERVICE_EXCEPTION, "", new InterruptedException()),
+                new BusinessException(CommonErrorCode.INTERNAL_SERVICE_EXCEPTION, "", new AssertionError()),
                 new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE), new AssertionError("unexpected failure"))) {
             when(repository.findById(ID)).thenReturn(Mono.error(failure));
             StepVerifier.create(service.findById(ID))

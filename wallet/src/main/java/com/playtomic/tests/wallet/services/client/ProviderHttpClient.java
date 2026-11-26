@@ -1,5 +1,7 @@
 package com.playtomic.tests.wallet.services.client;
 
+import com.playtomic.tests.common.enums.CommonErrorCode;
+import com.playtomic.tests.common.utils.ExceptionNormalizer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.codec.CodecException;
 import org.springframework.http.HttpStatus;
@@ -34,8 +36,7 @@ final class ProviderHttpClient {
                             });
                 })
                 .timeout(requestTimeout)
-                .onErrorMap(error -> error instanceof TimeoutException || error instanceof WebClientException
-                                || error instanceof CodecException,
-                        error -> new IllegalStateException("Payment provider response could not be confirmed"));
+                .onErrorMap(Exception.class, error -> ExceptionNormalizer.normalize(error,
+                        CommonErrorCode.EXTERNAL_SERVICE_EXCEPTION, "Payment provider response could not be confirmed"));
     }
 }

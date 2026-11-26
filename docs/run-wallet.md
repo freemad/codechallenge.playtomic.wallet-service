@@ -13,7 +13,7 @@ Run these commands from the repository root with JDK 25 and Maven 3.9+. Docker m
 | Run the Toxiproxy balance audit and Kafka alert checks | `mvn -pl wallet -am verify -Dit.test=WalletBalanceAuditIT -Dwallet.test.mongo.image=mongo:8.3.17-noble` |
 | Focus integration coverage on the four double-operation races | `mvn -pl wallet -am verify '-Dit.test=WalletApplicationIT#concurrent*' -Dwallet.test.mongo.image=mongo:8.3.17-noble` |
 | Run the opt-in hot-wallet pressure test | `mvn -pl wallet -am verify '-Dit.test=WalletApplicationIT#pressureConcurrentSpendsOnOneWallet' -Dwallet.pressure=true -Dwallet.test.mongo.image=mongo:8.3.17-noble` |
-| Run both opt-in hot-wallet pressure tests | `mvn -pl wallet -am verify '-Dit.test=WalletApplicationIT#pressureConcurrent*' -Dwallet.pressure=true -Dwallet.test.mongo.image=mongo:8.3.17-noble` |
+| Run all opt-in pressure tests | `mvn -pl wallet -am verify '-Dit.test=WalletApplicationIT#pressureConcurrent*' -Dwallet.pressure=true -Dwallet.test.mongo.image=mongo:8.3.17-noble` |
 
 **Host or Compose:** Choose one; both use port 8090 by default. The host wallet needs a writable MongoDB replica set reachable via `SPRING_MONGODB_URI`. Compose provides its own internal replica set, not a database port on the host. Top-up HTTP is disabled by default; see the [loopback-only demo](../README.md#try-a-local-top-up).
 
@@ -21,7 +21,15 @@ Run these commands from the repository root with JDK 25 and Maven 3.9+. Docker m
 
 **Pressure test:** Forty distinct €1 spends compete for €20 in one wallet, up to four in flight. The test requires 20 successes, 20 insufficient-funds results, a zero stored balance, and exactly 20 ledger postings and debit events. This is a bounded correctness check, not a throughput benchmark. Normal `verify` skips it. The focused commands still run unit tests; `it.test` narrows the Failsafe integration phase only.
 
+**Many-wallet replay:** The pressure suite also credits 24 wallets and replays each request with its original key, with four wallets in flight. It checks 24 provider calls and one posting, one event and a €1 balance per wallet. The reported elapsed time includes setup and database checks; it is not a per-request latency guarantee.
+
 **Network faults and audit alerts:** The audit suite routes MongoDB traffic through a disposable `ghcr.io/shopify/toxiproxy:2.12.0`. With 60 ms downstream latency, a €3.25 debit from €10 leaves €6.75. Cutting the connection before the audit must leave the cutoff pending; after reconnection, replay must leave one posting and the audit must confirm €6.75 without queuing an alert. A separate deliberately corrupted wallet (€11 stored vs €9 calculated) must produce a redacted discrepancy log, one `wallet_balance_audit` document, and a Kafka alert linked by event ID. The test consumes that alert from `wallet.audit.alerts.v1`; delivery to a downstream pager or dashboard is outside this check.
+
+## Disposable demo and recovery checks
+
+Run `python3 deployment/check-wallet.py` for a seeded GET → top-up → replay → GET and a provider decline. Add `--ha` to run two wallet processes, interrupt local settlement after the receipt commits, step down the MongoDB primary, and test scheduled recovery without client replay. These commands own and remove their test containers and volumes; neither requires a running wallet stack.
+
+`/api/v1/wallets/log` only checks the HTTP listener. Use `/actuator/health/readiness` for application and MongoDB readiness. Bootstrap needs all three fresh members to initialize a new set, but an existing set only needs a primary with a writable majority. In normal Compose, enable recovery explicitly with `WALLET_RECONCILIATION_ENABLED=true docker compose -f deployment/compose.yaml up -d wallet`; by default it is off.
 
 ## Accepted charge with a missing receipt
 

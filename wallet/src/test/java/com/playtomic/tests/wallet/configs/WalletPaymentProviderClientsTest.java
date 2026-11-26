@@ -2,6 +2,8 @@ package com.playtomic.tests.wallet.configs;
 
 import com.playtomic.tests.common.configs.CommonProps;
 import com.playtomic.tests.common.configs.ReactiveHttpClientConfiguration;
+import com.playtomic.tests.common.enums.CommonErrorCode;
+import com.playtomic.tests.common.exceptions.BusinessException;
 import com.playtomic.tests.wallet.http.stripe.StripeService;
 import com.playtomic.tests.wallet.mappers.StripePaymentMapper;
 import com.playtomic.tests.wallet.models.ProviderPaymentResult;
@@ -172,11 +174,13 @@ class WalletPaymentProviderClientsTest {
                 var redsys = context.getBean(RedsysAdapter.class);
                 var capture = paypal.createOrder(AMOUNT).flatMap(paypal::captureOrder);
                 StepVerifier.create(capture).expectNext(ProviderPaymentResult.declined()).expectComplete().verify(DEADLINE);
-                StepVerifier.create(capture).expectErrorMessage("PayPal capture could not be confirmed").verify(DEADLINE);
+                StepVerifier.create(capture).expectErrorSatisfies(error -> assertFailure(error,
+                        CommonErrorCode.ILLEGAL_STATE_EXCEPTION, IllegalStateException.class, "PayPal capture could not be confirmed")).verify(DEADLINE);
                 StepVerifier.create(redsys.authorize(ORDER, AMOUNT))
                         .expectNext(ProviderPaymentResult.declined()).expectComplete().verify(DEADLINE);
                 StepVerifier.create(redsys.authorize(ORDER, AMOUNT))
-                        .expectErrorMessage("Redsys response does not match the request").verify(DEADLINE);
+                        .expectErrorSatisfies(error -> assertFailure(error, CommonErrorCode.ILLEGAL_STATE_EXCEPTION,
+                                IllegalStateException.class, "Redsys response does not match the request")).verify(DEADLINE);
             });
         } finally {
             server.disposeNow(DEADLINE);
@@ -195,12 +199,21 @@ class WalletPaymentProviderClientsTest {
             configured(server.port()).withPropertyValues("WALLET_PAYMENT_PROVIDERS_REDSYS_REQUEST_TIMEOUT=1s").run(context -> {
                 var redsys = context.getBean(RedsysAdapter.class);
                 StepVerifier.create(redsys.authorize(ORDER, AMOUNT))
-                        .expectErrorMessage("Payment provider response could not be confirmed").verify(DEADLINE);
+                        .expectErrorSatisfies(error -> assertFailure(error, CommonErrorCode.TIME_BOX_EXCEPTION,
+                                java.util.concurrent.TimeoutException.class, "Payment provider response could not be confirmed")).verify(DEADLINE);
             });
             assertThat(requests).hasValue(1);
         } finally {
             server.disposeNow(DEADLINE);
         }
+    }
+
+    private static void assertFailure(Throwable error, CommonErrorCode code, Class<? extends Throwable> cause, String detail) {
+        assertThat(error).isInstanceOfSatisfying(BusinessException.class, failure -> {
+            assertThat(failure.getErrorCode()).isEqualTo(code);
+            assertThat(failure.getCause()).isInstanceOf(cause);
+            assertThat(failure.getAdditionalInfo()).contains(detail);
+        });
     }
 
     private ApplicationContextRunner configured(int port) {

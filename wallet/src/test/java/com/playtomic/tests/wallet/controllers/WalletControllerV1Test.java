@@ -52,7 +52,7 @@ class WalletControllerV1Test {
 
         client.get().uri("/api/v1/wallets/wallet-1").exchange()
                 .expectStatus().isOk()
-                .expectHeader().doesNotExist(HttpHeaders.CACHE_CONTROL)
+                .expectHeader().valueEquals(HttpHeaders.CACHE_CONTROL, "no-store")
                 .expectBody()
                 .jsonPath("$.type").isEqualTo("response")
                 .jsonPath("$.version").isEqualTo("1")
@@ -92,7 +92,7 @@ class WalletControllerV1Test {
                 .expectStatus().isBadRequest()
                 .expectBody()
                 .jsonPath("$.success").isEqualTo(false)
-                .jsonPath("$.error.code").isEqualTo(WalletErrorCode.INVALID_WALLET_ID.getCode());
+                .jsonPath("$.error.code").isEqualTo(12001);
     }
 
     @Test
@@ -102,6 +102,7 @@ class WalletControllerV1Test {
 
         client.get().uri("/api/v1/wallets/missing").exchange()
                 .expectStatus().isNotFound()
+                .expectHeader().valueEquals(HttpHeaders.CACHE_CONTROL, "no-store")
                 .expectBody()
                 .jsonPath("$.success").isEqualTo(false)
                 .jsonPath("$.error.code").isEqualTo(WalletErrorCode.WALLET_NOT_FOUND.getCode());
@@ -142,7 +143,7 @@ class WalletControllerV1Test {
                     var body = response.getBody();
                     assertThat(body).isNotNull();
                     assertThat(body.getCid()).isEqualTo(exchange.getRequest().getId());
-                    assertThat(body.getError().getCode()).isEqualTo(WalletErrorCode.BALANCE_UPDATE_NOT_MATCHED.getCode());
+                    assertThat(body.getError().getCode()).isEqualTo(12006);
                     assertThat(body.getError().getMessage()).isEqualTo("Internal Server Error");
                 })
                 .verifyComplete();

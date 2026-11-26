@@ -445,6 +445,22 @@ class WalletApplicationIT {
     }
 
     @Test
+    void recordedDeclineIsNotACreditEvenOnReplay() {
+        String id = "http-declined";
+        var charge = new CardChargeModel(HTTP_TEST_CARD, BigDecimal.ONE);
+        when(stripe.charge(charge)).thenReturn(Mono.error(new com.playtomic.tests.wallet.http.stripe.StripeAmountTooSmallException()));
+        StepVerifier.create(seedWallet(id, "10")).verifyComplete();
+        for (int attempt = 0; attempt < 2; attempt++) {
+            postTopUp(id, "key", "1").expectStatus().isOk().expectBody()
+                    .jsonPath("$.success").isEqualTo(true)
+                    .jsonPath("$.result.status").isEqualTo("payment_rejected")
+                    .jsonPath("$.result.resultingBalance").doesNotHaveJsonPath();
+        }
+        webClient.get().uri(LOOKUP_PATH, id).exchange().expectStatus().isOk().expectBody().jsonPath("$.result.balance").isEqualTo(10);
+        verify(stripe).charge(charge);
+    }
+
+    @Test
     void invalidMissingAndWrongCurrencyRequestsFailWithoutDispatch() {
         StepVerifier.create(seedWallet("currency-check", "10").thenMany(Flux.concat(
                         mutations.topUp("currency-check", "invalid", BigDecimal.ZERO, "EUR", TEST_CARD),
@@ -570,6 +586,35 @@ class WalletApplicationIT {
                     assertThat(pair.getT2().getStatus()).isEqualTo(WALLET_OPERATION_STATUS_SUCCEEDED);
                     assertThat(pair.getT2().getResultingBalance()).isEqualByComparingTo("2");
                 }).expectComplete().verify(DEADLINE);
+        verifyNoInteractions(stripe);
+    }
+
+    @Test
+    void commitsReceiptWhileOldestPendingTransitionIsStalled() {
+        String walletId = "isolated-receipt";
+        Instant stale = Instant.EPOCH;
+        var pending = new WalletOperationModel("blocked-pending", walletId, WALLET_OPERATION_TYPE_TOP_UP,
+                BigDecimal.ONE, "EUR", WALLET_OPERATION_STATUS_PENDING, null, stale, "stripe");
+        var receipt = new WalletOperationModel("independent-receipt", walletId, WALLET_OPERATION_TYPE_TOP_UP,
+                BigDecimal.ONE, "EUR", WALLET_OPERATION_STATUS_PENDING, null, stale, "stripe");
+        var started = reactor.core.publisher.Sinks.<Void>empty();
+        var release = reactor.core.publisher.Sinks.<Void>empty();
+        var commands = mock(WalletOperationService.class, org.mockito.AdditionalAnswers.delegatesTo(operations));
+        doReturn(Mono.defer(() -> {
+            started.tryEmitEmpty();
+            return release.asMono().then(Mono.error(new IllegalStateException("pending transition failed")));
+        })).when(commands).markPaymentOutcome(pending.getId(), WALLET_OPERATION_STATUS_REVIEW_REQUIRED);
+        var job = new WalletReconciliationJob(commands, operationEntities, leases, reconciliationProperties);
+        var setup = seedWallet(walletId, "1").then(operations.reserve(pending)).then(operations.reserve(receipt))
+                .then(operations.recordReceipt(receipt.getId(), "independent-payment"))
+                .then(mongo.updateMulti(Query.query(Criteria.where("walletId").is(walletId)),
+                        new Update().set("updatedAt", Date.from(stale)), "wallet_operations"));
+        var confirm = started.asMono().thenMany(Flux.interval(Duration.ZERO, Duration.ofMillis(100)))
+                .concatMap(tick -> operations.find(receipt.getId()).map(WalletApplicationIT::presentResult))
+                .filter(row -> row.getStatus() == WALLET_OPERATION_STATUS_SUCCEEDED).next()
+                .then(checkCommittedBalance(walletId, "2", "1", 1)).doOnSuccess(done -> release.tryEmitEmpty());
+        StepVerifier.create(setup.then(Mono.when(job.reconcile(), confirm)))
+                .expectComplete().verify(DEADLINE);
         verifyNoInteractions(stripe);
     }
 

@@ -1,5 +1,8 @@
 package com.playtomic.tests.wallet.services.adapter;
 
+import com.playtomic.tests.common.utils.ExceptionNormalizer;
+import com.playtomic.tests.wallet.dtos.FixtureWire.Authorization;
+import com.playtomic.tests.wallet.dtos.FixtureWire.Envelope;
 import com.playtomic.tests.wallet.models.ProviderPaymentResult;
 import com.playtomic.tests.wallet.services.client.RedsysClient;
 import lombok.RequiredArgsConstructor;
@@ -11,7 +14,6 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.math.BigDecimal;
 import java.util.Base64;
-import java.util.Map;
 import java.util.regex.Pattern;
 
 /** Authorizes EUR amounts using the unsigned Redsys test protocol. */
@@ -43,17 +45,16 @@ public final class RedsysAdapter {
                 return Mono.error(new IllegalArgumentException("Redsys requires a positive EUR amount with at most two decimals"));
             }
             String minorUnits = amount.movePointRight(2).toBigIntegerExact().toString();
-            var parameters = Map.of("DS_MERCHANT_ORDER", order, "DS_MERCHANT_AMOUNT", minorUnits,
-                    "DS_MERCHANT_CURRENCY", CURRENCY, "DS_MERCHANT_TRANSACTIONTYPE", AUTHORIZATION);
+            var parameters = new Authorization(order, minorUnits, CURRENCY, AUTHORIZATION);
             String encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(json.writeValueAsBytes(parameters));
-            return client.authorize(Map.of(PARAMETERS, encoded, VERSION, FIXTURE_VERSION, SIGNATURE, FIXTURE_SIGNATURE))
+            return client.authorize(new Envelope(encoded, FIXTURE_VERSION, FIXTURE_SIGNATURE))
                     .map(envelope -> result(envelope, order, minorUnits));
-        });
+        }).onErrorMap(ExceptionNormalizer::normalize);
     }
 
-    private ProviderPaymentResult result(JsonNode envelope, String order, String minorUnits) {
-        String encoded = text(envelope, PARAMETERS);
-        if (!FIXTURE_VERSION.equals(text(envelope, VERSION)) || !FIXTURE_SIGNATURE.equals(text(envelope, SIGNATURE))
+    private ProviderPaymentResult result(Envelope envelope, String order, String minorUnits) {
+        String encoded = envelope.parameters();
+        if (!FIXTURE_VERSION.equals(envelope.version()) || !FIXTURE_SIGNATURE.equals(envelope.signature())
                 || encoded.isEmpty() || encoded.length() > 4096) {
             throw new IllegalStateException("Invalid Redsys envelope");
         }
@@ -61,7 +62,7 @@ public final class RedsysAdapter {
         try {
             parameters = json.readTree(Base64.getUrlDecoder().decode(encoded));
         } catch (IllegalArgumentException | JacksonException error) {
-            throw new IllegalStateException("Invalid Redsys parameters");
+            throw new IllegalStateException("Invalid Redsys parameters", error);
         }
         if (parameters == null || !parameters.isObject()) {
             throw new IllegalStateException("Invalid Redsys parameters");
