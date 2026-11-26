@@ -1,350 +1,42 @@
-# Wallets Service
-In Playtomic, we have a service to manage our wallets. Our players can top-up their wallets using a credit card and spend that money on our platform (bookings, racket rentals, ...)
+# Playtomic wallet challenge
 
-That service has the following operations:
-- You can query your balance.
-- You can top-up your wallet. In this case, we charge the amount using a third-party payments platform (stripe, paypal, redsys).
-- You can spend your balance on purchases in Playtomic. 
-- You can return these purchases, and your money is refunded.
-- You can check your history of transactions.
+A player can look up an existing wallet and top it up by credit card. The wallet charges a separate Stripe-compatible HTTP simulator; MongoDB stores the balance. The challenge is to handle concurrent requests and payment failures without charging or crediting twice.
 
-This exercise consists of building a proof of concept of that wallet service.
-You have to code endpoints for these operations:
-1. Get a wallet using its identifier.
-1. Top-up money in that wallet using a credit card number. It has to charge that amount internally using a third-party platform.
+## Try both endpoints first
 
-You don't have to write the following operations, but we will discuss possible solutions during the interview:
-1. How to spend money from the wallet.
-1. How to refund that money.
-
-The basic structure of a wallet is its identifier and its current balance. If you think you need extra fields, add them. We will discuss it in the interview. 
-
-## Build and test
-
-See the [wallet command guide](docs/run-wallet.md) for host and Compose startup, unit and integration tests, the double-operation races, and the opt-in pressure test.
-
-Use JDK 25 and Maven 3.9+. From the repository root, `mvn test` runs the unit
-suite and `mvn verify` also runs the wallet integration tests in Docker. They
-use a disposable MongoDB replica set and, for the enabled outbox relay test,
-a real Kafka broker (`apache/kafka-native:4.0.0` by default; override with
-`-Dwallet.test.kafka.image`). If the pinned MongoDB test image cannot run on
-the host kernel, use the test-only override:
+From the repository root, with **JDK 25, Maven 3.9+, Python 3 and running Docker with Compose**:
 
 ```sh
-mvn verify -Dwallet.test.mongo.image=mongo:8.3.17-noble
+python3 deployment/check-wallet.py
 ```
 
-The reactor builds the `common` library, the `wallet` service, and the local
-payment `simulator`. Legacy sources under the root `src/` are outside the
-reactor. After packaging, run
-`java -jar wallet/target/exercise-wallet-0.0.3.jar` with `SPRING_MONGODB_URI`
-pointing to a writable MongoDB replica set.
+![Two requests, one charge: €10 becomes €15.25 after a €5.25 top-up. Replaying the same key leaves €15.25, one provider charge and one ledger posting.](docs/top-up-replay.svg)
 
-- `GET /api/v1/wallets/{id}` returns a `ResponseDtoV1` envelope, with the wallet under
-  `result` on success and an `error` on lookup failure. The HTTP status is
-  `200`, `400`, `404`, or `500` as appropriate. For example, a wallet with ID
-  `wallet-123` is looked up at `GET /api/v1/wallets/wallet-123`.
-- `GET /api/v1/wallets/log` is the smoke endpoint. The previous unversioned URLs
-  are not mapped. The `log` and `payment-providers` segments are reserved and
-  are not wallet lookup IDs on this API.
+The checker builds both JARs, starts a private replica set, simulator and wallet, then acts as the HTTP client. No manual seed, running Compose stack, hosted payment service or real card is needed.
 
-Spend and other writes remain internal; top-up is HTTP-accessible only in the
-opt-in local demo below.
-
-## Try a local top-up
-
-From the repository root run `python3 deployment/check-wallet.py` (Python 3, Maven, JDK 25 and Docker Compose). It builds both services, seeds a disposable replica set, checks GET → top-up → replay → GET, then removes its containers and volumes. The client and services share a private loopback interface; the demo publishes no payment port. For interactive host use, follow the steps below.
-
-`POST /api/v1/wallets/{id}/top-ups` is disabled by default, including in the default
-Compose stack. For this demo, run both Java services on the same host. Start
-[the local payment simulator](#local-payment-simulator) and use a disposable,
-writable MongoDB replica set reachable from the host. The unmodified Compose
-stack does not publish MongoDB or the simulator to the host.
-
-Set `SPRING_MONGODB_URI` to the disposable replica set (the profile defaults to
-`mongodb://localhost:27017/playtomic?directConnection=true&replicaSet=wallet-rs&w=majority`).
-On a fresh disposable database, seed a wallet and start the wallet JAR:
-
-```sh
-mongosh "$SPRING_MONGODB_URI" --eval 'db.wallets.insertOne({_id:"wallet-demo", balance:NumberDecimal("10.00"), currency:"EUR"})'
-java -jar wallet/target/exercise-wallet-0.0.3.jar --spring.profiles.active=local-top-up
-```
-
-`WalletControllerV1` declares both demo routes. They are registered only when
-`wallet.top-up.http.enabled` is `true`. It defaults to `false`; the `local-top-up`
-profile enables it and sets `server.address` to `127.0.0.1`. Startup rejects an
-attempt to enable it outside that profile or on another listener address.
-The profile supplies `wallet.top-up.http.synthetic-card-number`, which must be
-the documented synthetic card. Stripe charges must use the approved loopback
-endpoint. Do not expose this profile through a proxy or use real card data.
-This demo has no wallet-owner authorization.
-
-```sh
-curl -i http://127.0.0.1:8090/api/v1/wallets/payment-providers
-```
-
-Choose an ID from `result.providers`. This list contains enabled providers
-wired into the wallet's top-up flow; it does not probe provider health.
-Currently only `stripe` can appear. To disable it, set
-`WALLET_PAYMENT_PROVIDERS_STRIPE_TOP_UP_ENABLED=false`.
-
-```sh
-curl -i http://127.0.0.1:8090/api/v1/wallets/wallet-demo/top-ups \
-  -H 'Content-Type: application/json' \
-  -H 'Idempotency-Key: wallet-demo-top-up-1' \
-  --data '{"amount":5.25,"currency":"EUR","provider":"stripe","creditCardNumber":"4242424242424242"}'
-```
-
-Supply exactly one nonblank `Idempotency-Key`, the wallet's currency and a provider ID. The Stripe simulator accepts EUR major units from **0.01 through 999999.99** inclusive, exactly divisible into cents (no rounding). Its charge request has no currency field; its receipt ID confirms fixture acceptance, not independently verified currency, amount or wallet credit. These limits govern fresh Stripe charges, not wallet balances, spending or existing-operation replay.
-
-V1 sends `amount`, `balance` and `resultingBalance` as JSON **numbers**. Serialize from decimal values and parse number tokens directly into decimals (e.g. Python `json.loads(body, parse_float=Decimal)`), never via floating point. A JavaScript `Number` cannot preserve `9007199254740993.01`; use a decimal-aware JSON parser and writer.
-
-Inspect `result.status`, not just the HTTP status or envelope `success` flag:
-
-| HTTP status | Meaning |
-| --- | --- |
-| `200` | Recorded result: `succeeded`, `payment_rejected`, or `provider_unavailable`. Only `succeeded` includes `resultingBalance`. |
-| `202` | Unresolved: `pending`, `receipt_recorded`, or `review_required`. This does not confirm credit. |
-| `400` / `404` | Invalid request (including currency mismatch or a provider not enabled for a new top-up) / wallet not found. |
-| `409` | The same wallet/key already identifies a different amount, currency, operation type, or provider. |
-| `500` | Unexpected failure; internal details are not returned. |
-
-For example, given the wallet HTTP `status` and response `body` bytes:
-
-```python
-import json
-from decimal import Decimal
-
-reply = json.loads(body, parse_float=Decimal)
-result = reply.get("result") or {}
-state = result.get("status")
-if status == 200 and state == "succeeded":
-    print("Credited; balance after this operation:", result["resultingBalance"])
-elif status == 200 and state in ("payment_rejected", "provider_unavailable"):
-    print("Not credited:", state)  # A provider 422 is a recorded rejection here.
-elif status == 202 and state in ("pending", "receipt_recorded", "review_required"):
-    print("Unresolved:", state)  # review_required needs evidence, not a new charge.
-else:
-    print("No confirmation of credit; inspect the error or unexpected reply.")
-```
-
-## Run with Docker Compose
-
-From the repository root:
-
-```sh
-docker compose -f deployment/compose.yaml up --build -d
-curl --fail --retry 12 --retry-delay 3 --retry-all-errors http://127.0.0.1:8090/api/v1/wallets/log
-docker compose -f deployment/compose.yaml down
-```
-
-Compose builds separate `wallet` and `simulator` images and runs them as
-separate services alongside the MongoDB replica set. The wallet defaults to
-`http://simulator:9999` for all payment provider endpoints on the Compose
-network. The simulator port is not published to the host. `/api/v1/wallets/log` checks the
-wallet HTTP endpoint; it does not send a payment. Set
-`PAYMENT_SIMULATOR_SCENARIO=REJECT` or `TIMEOUT` before starting Compose to use a
-different fixture scenario. Use synthetic payment data only.
-
-## Local payment simulator
-
-The simulator needs no MongoDB or Kafka. It listens on `127.0.0.1:9999` by
-default and serves local Stripe, PayPal, and Redsys fixtures. Use synthetic
-payment data only. Build and run it in a separate terminal:
-
-```sh
-mvn -pl simulator -am package
-java -jar simulator/target/payment-simulator-0.0.3.jar
-```
-
-For a wallet running on the same host, point its Stripe client at this process
-instead of the hosted sandbox:
-
-```sh
-export WALLET_PAYMENT_PROVIDERS_STRIPE_CHARGES_URI=http://127.0.0.1:9999/v1/stripe-simulator/charges
-export WALLET_PAYMENT_PROVIDERS_STRIPE_REFUNDS_URI='http://127.0.0.1:9999/v1/stripe-simulator/payments/{payment_id}/refunds'
-```
-
-### Wallet payment providers
-
-In `wallet/src/main/resources/application.yaml`, `wallet.payment-providers` is
-keyed by `stripe`, `paypal`, and `redsys`. Each provider has its own managed,
-non-retrying HTTP client, with a `2s` connect timeout and a `5s` deadline per
-HTTP request by default. Set `WALLET_PAYMENT_PROVIDERS_<PROVIDER>_CONNECT_TIMEOUT`
-or `WALLET_PAYMENT_PROVIDERS_<PROVIDER>_REQUEST_TIMEOUT` to override either one
-for `STRIPE`, `PAYPAL`, or `REDSYS`.
-
-| Provider | Endpoint overrides |
-| --- | --- |
-| Stripe | `WALLET_PAYMENT_PROVIDERS_STRIPE_CHARGES_URI`, `WALLET_PAYMENT_PROVIDERS_STRIPE_REFUNDS_URI` |
-| PayPal | `WALLET_PAYMENT_PROVIDERS_PAYPAL_ORDERS_URI` |
-| Redsys | `WALLET_PAYMENT_PROVIDERS_REDSYS_AUTHORIZATION_URI` |
-
-Outside Compose, Stripe defaults to the hosted sandbox in `develop` and
-`http://localhost:9999` for charges in `test`. PayPal and Redsys default to the
-local fixture routes. The old `STRIPE_SIMULATOR_CHARGESURI`,
-`STRIPE_SIMULATOR_REFUNDSURI`, and `WALLET_SIMULATOR_*` environment variables are
-still accepted as fallbacks in the wallet; the provider-specific overrides take
-precedence.
-
-`PayPalAdapter` creates and captures EUR orders. `RedsysAdapter` uses the unsigned
-EUR authorization test protocol, not the production Redsys protocol. Neither
-fixture is used for wallet top-ups. No refund workflows are exposed.
-
-Compose uses the service DNS name by default. For other container deployments,
-set the endpoint overrides to addresses reachable from the wallet container.
-Use synthetic payment data and fixture endpoints only.
-
-### Stripe charges
-
-Wallet top-ups call `StripeAdapter`, which maps wallet models to and from typed
-Stripe payloads. `StripeClient` sends the HTTP request without automatic retries.
-`StripeService` remains a compatibility facade. A confirmed `422` is a rejection;
-a timeout or missing receipt requires review, not another charge.
-
-Send a sample charge directly to the simulator:
-
-```sh
-curl -i http://127.0.0.1:9999/v1/stripe-simulator/charges \
-  -H 'Content-Type: application/json' \
-  --data '{"credit_card":"4242424242424242","amount":15.25}'
-```
-
-Stripe returns `200` with a synthetic `id` in `SUCCESS` mode or `422` in
-`REJECT` mode. The wallet still requires a configured refund URI, but the
-simulator does not implement refunds.
-
-### PayPal orders and capture
-
-```sh
-curl -i http://127.0.0.1:9999/v1/paypal-simulator/v2/checkout/orders \
-  -H 'Content-Type: application/json' \
-  --data '{"intent":"CAPTURE","purchase_units":[{"amount":{"currency_code":"EUR","value":"15.25"}}]}'
-```
-
-The fixture skips buyer approval and returns `201 APPROVED`. Set `ORDER_ID`
-to the returned `id`, then capture the order:
-
-```sh
-curl -i -X POST "http://127.0.0.1:9999/v1/paypal-simulator/v2/checkout/orders/${ORDER_ID}/capture"
-```
-
-Success returns `201 COMPLETED` with a capture ID and amount under
-`purchase_units[0].payments.captures[0]`. Decline returns `422` with
-`INSTRUMENT_DECLINED` under `details[0].issue`. An unknown order returns `404`;
-a second capture of a completed order returns `422 ORDER_ALREADY_CAPTURED`.
-The fixture accepts one EUR purchase unit with a positive decimal string
-(up to ten whole digits and two fractional digits). It retains up to 1,024
-orders in memory; at capacity creation returns `503` until restart.
-
-### Redsys REST authorization
-
-```sh
-params=$(printf '%s' '{"DS_MERCHANT_ORDER":"1234TEST","DS_MERCHANT_AMOUNT":"1525","DS_MERCHANT_CURRENCY":"978","DS_MERCHANT_TRANSACTIONTYPE":"0"}' \
-  | base64 | tr '/+' '_-' | tr -d '=\n')
-curl -i http://127.0.0.1:9999/v1/redsys-simulator/sis/rest/trataPeticion \
-  -H 'Content-Type: application/json' \
-  --data "$(printf '{"Ds_MerchantParameters":"%s","Ds_SignatureVersion":"SIMULATOR_ONLY","Ds_Signature":"SIMULATOR_UNSIGNED"}' "$params")"
-```
-
-The request uses Base64URL-encoded JSON, EUR numeric code `978`, and a positive
-integer string in minor units (up to 12 digits). The order is four digits
-followed by up to eight alphanumeric characters. Both approval and decline
-return HTTP `200`: decode the returned `Ds_MerchantParameters` to read
-`Ds_Response` (`0000` with `Ds_AuthorisationCode` on approval, `0101` on decline).
-Malformed fixture requests return `400`. The signature fields are fixed fixture
-markers, not cryptographic signatures.
-
-### Scenarios and limits
-
-`SUCCESS` is the default. Restart with `--payment-simulator.scenario=REJECT` for
-declines, or `--payment-simulator.scenario=TIMEOUT` to delay payment responses
-by ten seconds before returning `504`. PayPal order creation works in every mode;
-the scenario applies only to capture. Timeout does not simulate an accepted
-payment with a lost receipt. There are no real credentials, external provider
-calls, OAuth, callbacks, redirects, or 3-D Secure. The wallet still uses Stripe
-only; the PayPal and Redsys endpoints are standalone fixtures.
-
-## Wallet write path
-
-Top-up reserves a wallet-scoped idempotency key before calling the payment provider.
-Only the reservation winner dispatches. An unconfirmed charge goes to review
-instead of being retried; a recorded receipt can be applied locally without
-contacting the provider again. Spending uses a sufficient-funds guard. The
-balance change, sequenced ledger posting, operation result, and outbox event commit together. Replays
-return the recorded result, not the current wallet balance.
-
-- `WALLET_AUDIT_ENABLED=true` enables the [daily UTC balance auditor and monitoring alert relay](docs/wallet-balance-audit.md). Enroll verified openings and configure snapshot retention before enabling it.
-- `WALLET_RECONCILIATION_ENABLED=true` enables lease-led recovery and stale
-  payment review. The job never retries the provider call.
-- `WALLET_OUTBOX_ENABLED=true` enables the relay. Set
-  `SPRING_KAFKA_BOOTSTRAP_SERVERS` and provision `wallet.events.v1` (override
-  with `WALLET_OUTBOX_TOPIC`). Events use the wallet ID as the Kafka key.
-  Delivery is at least once: consumers must deduplicate by `eventId` and
-  must not assume Mongo commit order across concurrent relay workers.
-- Wallet operation timers and result counters use bounded tags. See the
-  [wallet logging contract](docs/wallet-logging.md) for JSON fields, event levels,
-  redaction rules, and how to enable wallet-only debug logging. Alert routing and
-  trace export depend on the deployment's observability stack.
-- For Actuator metrics in Grafana and local database browsing, see the
-  [Prometheus, Grafana and Mongo Express Compose guide](docs/local-monitoring.md).
-
-A production write contract is not defined. Production top-up would require
-wallet-owner authorization before both initial dispatch and replay, TLS, and
-an approved payment-data design (such as tokenization). Provider currency and
-amount policy remain open.
-
-### Worker configuration
-
-The payment reconciliation and balance-event relay workers are disabled by default. The wallet's `application.yaml` defines
-these defaults and binds them to validated `wallet.reconciliation` and
-`wallet.outbox` settings.
-
-| Environment variable | Default | Purpose |
+| Given | When | Expected result |
 | --- | --- | --- |
-| `WALLET_RECONCILIATION_INTERVAL` | `15s` | Fixed delay between runs |
-| `WALLET_RECONCILIATION_LEASE` | `1m` | Exclusive job lease |
-| `WALLET_RECONCILIATION_RUN_TIMEOUT` | `25s` | Timeout for work under the lease |
-| `WALLET_RECONCILIATION_STALE_PENDING_AGE` | `2m` | Minimum pending age before review |
-| `WALLET_RECONCILIATION_RECEIPT_DELAY` | `15s` | Minimum receipt age before local recovery |
-| `WALLET_RECONCILIATION_BATCH_SIZE` | `25` | Maximum operations per status per run |
-| `WALLET_OUTBOX_INTERVAL` | `2s` | Fixed delay between runs |
-| `WALLET_OUTBOX_TOPIC` | `wallet.events.v1` | Kafka destination |
-| `WALLET_OUTBOX_CLAIM_LEASE` | `45s` | Exclusive event claim |
-| `WALLET_OUTBOX_SEND_TIMEOUT` | `20s` | Timeout for publishing an event |
-| `WALLET_OUTBOX_BATCH_SIZE` | `25` | Maximum claims per run |
+| A wallet holding €10 | GET the wallet, POST €5.25, repeat with the same key, then GET again | €15.25, **one** provider charge and **one** ledger posting |
+| A balance beyond JavaScript’s safe integer range | Credit one cent | The exact cent survives the HTTP round trip |
+| A provider that declines | POST and replay the same key | `payment_rejected` both times, one provider call, no posting, balance still €10 |
 
-Settings are validated at startup even when the workers are disabled. Use
-positive durations with explicit units and positive batch sizes. The job lease
-must exceed the run timeout. The outbox claim lease must exceed the send timeout;
-leave enough time for the database acknowledgment after broker success.
+A passing run exits zero and removes its containers and volumes. Add `--ha` to exercise process death, a MongoDB election and scheduled receipt recovery. **Ordinary Compose does not register the top-up route.** To assess both operations, use the checker above or the [interactive loopback demo](docs/wallet-reference.md#try-a-local-top-up).
 
-## Original exercise scaffold
+## What is implemented?
 
-So you can focus on these problems, you have here a maven project with a Spring Boot application. It already contains
-the basic dependencies and in-memory version of MongoDB for testing. There are development and test profiles.
-You will need to start a MongoDB instance to run the application. For example, using
-```
-docker run -d --name mongo4.0-rs -p 27017:27017 mongo:4.0
-```
+| Operation | Availability | Contract |
+| --- | --- | --- |
+| `GET /api/v1/wallets/{id}` | Default and demo | Returns ID, balance and currency under `result`; missing wallet → 404. Lookup never provisions a wallet. |
+| `POST /api/v1/wallets/{id}/top-ups` | Loopback demo only | Requires one `Idempotency-Key`, amount, currency, provider and the synthetic card. Only `result.status: succeeded` confirms credit. |
+| `GET /api/v1/wallets/payment-providers` | Loopback demo only | Lists enabled top-up providers, not provider health. Only Stripe is wired for wallet charges. |
 
-You can also find an implementation of the service that would call to the real payments platform (StripePaymentService).
-This implementation is calling to a simulator deployed in one of our environments. Take into account
-that this simulator will return 422 http error codes under certain conditions.
+Spending and refunding purchases are interview discussion topics, not required HTTP routes. Spending exists internally; there is no public spend, refund or transaction-history API. The simulator demonstrates the provider boundary, not live payment processing or production authorization.
 
-Consider that this service must work in a microservices environment in high availability. You should care about concurrency too.
+## Where to go next
 
-You can spend as much time as you need but we think that 4 hours is enough to show [the requirements of this job.](OFFER.md)
-You don't have to document your code, but you can write down anything you want to explain or anything you have skipped.
-You don't need to write tests for everything, but we would like to see different types of tests.
+- [Scenario runbook](docs/run-wallet.md) — start or stop the stack, exercise individual outcomes, run concurrency and fault checks, and follow operator procedures.
+- [Software Architecture Document (SAD)](docs/SAD.md) — components, transaction boundaries, recovery decisions and production limits.
+- [API, simulator and configuration reference](docs/wallet-reference.md) — requests, exact status mapping, provider fixtures and worker settings.
+- [Balance audit](docs/wallet-balance-audit.md) · [Logging](docs/wallet-logging.md) · [Local monitoring](docs/local-monitoring.md).
 
-### Upgrading existing MongoDB data
-
-`wallet_operations.type`, `wallet_operations.status`, and `wallet_outbox.eventType`
-use stable BSON int32 codes. HTTP statuses and Kafka event labels are unchanged.
-For a database written by an older wallet, stop **all** wallet instances and workers,
-back up the database, then run `mongosh "$WALLET_DB_URI" --file deployment/migrate-enum-values.js`
-with the wallet database explicitly named in the URI. The script validates existing
-values before writing and can be rerun after interruption. Start the new wallet only
-when it completes successfully: numeric filters do not match old string values.
-Fresh databases need no migration. Do not run old and new writers together.
+For unit tests use `mvn test`. For unit **and** integration tests use `mvn verify -Dwallet.test.mongo.image=mongo:8.3.17-noble` with Docker running; Testcontainers creates its own services. Maven builds `common` (library), `wallet` (service) and `simulator` (service). The legacy root `src/` is not built.

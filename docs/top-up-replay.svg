@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="208" viewBox="0 0 760 208" role="img" aria-labelledby="title desc">
+  <title id="title">Two requests, one charge</title>
+  <desc id="desc">A wallet starts at €10. A €5.25 top-up succeeds. Replaying the same key returns the recorded result: €15.25, one provider charge and one ledger posting.</desc>
+  <style>
+    text { font-family: system-ui, sans-serif; fill: #f8fafc }
+    .label { font-size: 16px; fill: #a5f3df }
+    .value { font-size: 22px; font-weight: 650 }
+    .track { fill: none; stroke: #557385; stroke-width: 3 }
+    .trace { fill: none; stroke: #71e6c5; stroke-width: 3 }
+    @media (prefers-reduced-motion: no-preference) {
+      .trace { stroke-dasharray: 1; animation: trace 3s ease-out 1 }
+      @keyframes trace { from { stroke-dashoffset: 1 } to { stroke-dashoffset: 0 } }
+    }
+  </style>
+  <rect width="760" height="208" rx="14" fill="#102635"/>
+  <text x="26" y="40" font-size="28" font-weight="700">Two requests, one charge</text>
+  <path class="track" d="M32 69 H532"/>
+  <path class="trace" pathLength="1" d="M32 69 H532"/>
+  <g fill="#102635" stroke="#a5f3df" stroke-width="3">
+    <circle cx="32" cy="69" r="6"/><circle cx="282" cy="69" r="6"/><circle cx="532" cy="69" r="6"/>
+  </g>
+  <text class="label" x="26" y="103">01 · Lookup</text>
+  <text class="label" x="276" y="103">02 · Top up €5.25</text>
+  <text class="label" x="526" y="103">03 · Replay same key</text>
+  <text class="value" x="26" y="136">€10.00 balance</text>
+  <text class="value" x="276" y="136">€15.25 balance</text>
+  <text class="value" x="526" y="136">Still €15.25</text>
+  <path d="M26 157 H734" stroke="#557385"/>
+  <text x="26" y="187" font-size="18">Final count: 1 provider charge · 1 ledger posting</text>
+</svg>
+
