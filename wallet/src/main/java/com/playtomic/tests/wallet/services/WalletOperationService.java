@@ -26,6 +26,9 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Optional;
 
+import org.bson.types.Decimal128;
+import com.playtomic.tests.wallet.enums.WalletErrorCode;
+
 import static com.playtomic.tests.common.utils.ExceptionNormalizer.normalize;
 import static com.playtomic.tests.wallet.enums.WalletErrorCode.BALANCE_UPDATE_NOT_MATCHED;
 import static com.playtomic.tests.wallet.enums.WalletOperationStatus.*;
@@ -67,7 +70,14 @@ public class WalletOperationService {
 
     /** An empty optional means an operation already owns this wallet/key pair. */
     public Mono<Outcome<Optional<WalletOperationModel>, Error>> reserve(WalletOperationModel request) {
-        return WalletOutcome.optional(operationEntityService.insertIfAbsent(request));
+        var insert = operationEntityService.insertIfAbsent(request);
+        if (request.getType() == WALLET_OPERATION_TYPE_TOP_UP) {
+            insert = walletTransactions.execute(insert.flatMap(operation -> entityService
+                    .fenceAdmission(request.getWalletId(), request.getCurrency())
+                    .flatMap(wallet -> checkCapacity(wallet.getId(), wallet.getBalance()))
+                    .thenReturn(operation)));
+        }
+        return WalletOutcome.optional(insert.onErrorResume(walletTransactions::isDuplicateKey, ignored -> Mono.empty()));
     }
 
     /** Records the provider outcome for an operation in its expected payment state. */
@@ -121,6 +131,28 @@ public class WalletOperationService {
                 .switchIfEmpty(Mono.defer(() -> operationEntityService.findById(id)));
     }
 
+    /** One hold needs only an exact endpoint. For multiple holds, bound every subset sum
+     * at the finest participating decimal place, independently of receipt arrival order. */
+    private Mono<Void> checkCapacity(String walletId, BigDecimal balance) {
+        record Envelope(BigDecimal total, int count) { }
+        return operationEntityService.unsettledCredits(walletId)
+                .reduce(new Envelope(balance.stripTrailingZeros(), 0), (e, amount) -> {
+                    var term = amount.stripTrailingZeros();
+                    var total = e.count() == 0 && balance.signum() == 0 ? term : e.total().add(term);
+                    return new Envelope(total, e.count() + 1);
+                }).doOnNext(e -> {
+                    if (e.count() == 0) return;
+                    try {
+                        new Decimal128(e.total());
+                        if (e.count() > 1 && (e.total().precision() > 34 || balance.setScale(e.total().scale()).precision() > 34)) {
+                            throw new NumberFormatException("Intermediate balance may round");
+                        }
+                    } catch (NumberFormatException ex) {
+                        throw new BusinessException(WalletErrorCode.INVALID_REQUEST, "Insufficient exact Decimal128 credit capacity", ex);
+                    }
+                }).then();
+    }
+
     private Mono<WalletOperationModel> applyToWallet(WalletOperationModel operation, WalletModel wallet,
                                                     boolean debit) {
         BigDecimal amount = operation.getAmount();
@@ -128,7 +160,8 @@ public class WalletOperationService {
             return finish(operation, WALLET_OPERATION_STATUS_INSUFFICIENT_FUNDS, null);
         }
         BigDecimal delta = debit ? amount.negate() : amount;
-        return entityService.incrementBalance(wallet, delta, debit ? Optional.of(amount) : Optional.empty())
+        var capacity = debit ? checkCapacity(wallet.getId(), wallet.getBalance().add(delta)) : Mono.<Void>empty();
+        return capacity.then(Mono.defer(() -> entityService.incrementBalance(wallet, delta, debit ? Optional.of(amount) : Optional.empty())))
                 .switchIfEmpty(Mono.error(() -> new BusinessException(BALANCE_UPDATE_NOT_MATCHED)))
                 .flatMap(updated -> finish(operation, WALLET_OPERATION_STATUS_SUCCEEDED, updated.getBalance())
                         .flatMap(result -> outboxEntityService.enqueue(new WalletOutboxModel(result.getId(), result.getWalletId(),

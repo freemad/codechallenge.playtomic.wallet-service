@@ -16,7 +16,7 @@ import java.time.Duration;
 @Component
 @RequiredArgsConstructor
 public class WalletMongoTransactions implements IWalletTransactions {
-    private static final int MAX_RETRIES = 5;
+    private static final int MAX_RETRIES = 12;
     private static final Duration MIN_BACKOFF = Duration.ofMillis(10);
     private static final Duration MAX_BACKOFF = Duration.ofMillis(250);
 
@@ -30,7 +30,18 @@ public class WalletMongoTransactions implements IWalletTransactions {
                         .maxBackoff(MAX_BACKOFF)
                         .filter(WalletMongoTransactions::isTransientTransactionError)
                         .doBeforeRetry(signal -> WalletLogEvent.TRANSACTION_RETRY.fields().addKeyValue("attempt", signal.totalRetries() + 1).log())
-                        .onRetryExhaustedThrow((spec, signal) -> signal.failure()));
+                        .onRetryExhaustedThrow((spec, signal) -> signal.failure()))
+                .doOnError(error -> {
+                    for (Throwable cause = error; cause != null; cause = cause.getCause()) {
+                        if (cause instanceof MongoException mongo) {
+                            WalletLogEvent.MUTATION_FAILED.fields().addKeyValue("phase", "localTransaction")
+                                    .addKeyValue("mongoCode", mongo.getCode())
+                                    .addKeyValue("transientTransaction", mongo.hasErrorLabel(MongoException.TRANSIENT_TRANSACTION_ERROR_LABEL))
+                                    .addKeyValue("unknownCommit", mongo.hasErrorLabel(MongoException.UNKNOWN_TRANSACTION_COMMIT_RESULT_LABEL)).log();
+                            break;
+                        }
+                    }
+                });
     }
 
     /** Reports whether the failure represents a duplicate persistence key. */
