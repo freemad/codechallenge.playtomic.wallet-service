@@ -16,6 +16,10 @@ import java.time.Instant;
 /** Provides reactive persistence access for wallet operation records. */
 @Repository
 public interface WalletOperationRepository extends IRepository<WalletOperationEntity, String> {
+    /** Includes every top-up which could still settle, including legacy and uncertain operations. */
+    Flux<WalletOperationEntity> findByWalletIdAndTypeAndStatusIn(String walletId, WalletOperationMongoType type,
+            java.util.Collection<WalletOperationMongoStatus> statuses);
+
     /** Reads a page of matching operations no newer than the cutoff, ordered by update time and then identifier. */
     Flux<WalletOperationEntity> findByTypeAndStatusAndUpdatedAtLessThanEqualOrderByUpdatedAtAscIdAsc(
             WalletOperationMongoType type, WalletOperationMongoStatus status, Instant cutoff, Pageable page);

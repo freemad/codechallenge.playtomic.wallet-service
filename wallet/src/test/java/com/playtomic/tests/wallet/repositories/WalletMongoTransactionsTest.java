@@ -71,7 +71,7 @@ class WalletMongoTransactionsTest {
                 .thenAwait(Duration.ofSeconds(5))
                 .expectErrorMatches(error -> error == failure).verify(DEADLINE);
 
-        verify(manager, times(6)).rollback(transaction);
+        verify(manager, times(13)).rollback(transaction);
     }
 
     private void stubTransactions() {
@@ -80,4 +80,3 @@ class WalletMongoTransactionsTest {
         when(manager.rollback(transaction)).thenReturn(Mono.empty());
     }
 }
-

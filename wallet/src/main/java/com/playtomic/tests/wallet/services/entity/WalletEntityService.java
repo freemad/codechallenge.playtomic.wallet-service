@@ -27,6 +27,13 @@ public class WalletEntityService implements IWalletEntityService<WalletModel, Wa
     private final WalletEntityMapper mapper;
     private final IWalletBalanceMongoOperations balanceOperations;
 
+    /** Takes the admission fence and reads the wallet in the caller's transaction. */
+    public Mono<WalletModel> fenceAdmission(String id, String currency) {
+        return repository.fenceAdmission(id, currency).filter(count -> count == 1L)
+                .flatMap(ignored -> findById(id))
+                .switchIfEmpty(Mono.error(() -> new com.playtomic.tests.wallet.exceptions.WalletNotFoundException()));
+    }
+
     /** A guard miss is empty; a present document must map or fail the transaction. */
     public Mono<WalletModel> incrementBalance(WalletModel snapshot, BigDecimal delta,
                                               Optional<BigDecimal> minimumBalance) {
