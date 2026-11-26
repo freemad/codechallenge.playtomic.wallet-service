@@ -1,7 +1,6 @@
 package com.playtomic.tests.wallet.enums;
 
-import com.playtomic.tests.common.enums.CommonErrorCode;
-import com.playtomic.tests.common.exceptions.BusinessException;
+import com.playtomic.tests.common.constants.CommonParam;
 import com.playtomic.tests.common.utils.EnumLookup;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -10,18 +9,17 @@ import lombok.Getter;
 @Getter
 @AllArgsConstructor
 public enum WalletOperationMongoType {
+    UNSPECIFIED(CommonParam.ENUM_UNSPECIFIED_VALUE, CommonParam.ENUM_UNSPECIFIED_NAME),
     TOP_UP(1, "top_up"),
-    SPEND(2, "spend");
+    SPEND(2, "spend"),
+    ERROR(CommonParam.ENUM_ERROR_VALUE, CommonParam.ENUM_ERROR_NAME);
 
     private final int value;
     /** Stable audit label, independent of the Java constant name. */
     private final String name;
 
     public static WalletOperationMongoType validate(WalletOperationMongoType candidate) {
-        if (candidate == null) {
-            throw new BusinessException(CommonErrorCode.ILLEGAL_ARGUMENT_EXCEPTION, "Wallet operation type requires an operational value");
-        }
-        return candidate;
+        return EnumLookup.requireOperational(candidate, UNSPECIFIED, ERROR, "Wallet operation type requires an operational value");
     }
 
     public static WalletOperationMongoType ofName(String name) {

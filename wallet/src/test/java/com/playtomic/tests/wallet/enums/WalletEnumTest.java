@@ -62,6 +62,19 @@ class WalletEnumTest {
         assertThatThrownBy(() -> WalletOperationMongoStatus.ofName("PENDING")).isInstanceOf(BusinessException.class);
     }
 
+    @ParameterizedTest
+    @CsvSource({"0,unspecified", "255,error"})
+    void recognizesMongoSentinelsButRejectsOperationalUse(int code, String label) {
+        var type = WalletOperationMongoType.ofValue(code);
+        var status = WalletOperationMongoStatus.ofValue(code);
+        assertThat(type.getName()).isEqualTo(label);
+        assertThat(status.getName()).isEqualTo(label);
+        assertThat(WalletOperationMongoType.ofName(label)).isSameAs(type);
+        assertThat(WalletOperationMongoStatus.ofName(label)).isSameAs(status);
+        assertThatThrownBy(() -> WalletOperationMongoType.validate(type)).isInstanceOf(BusinessException.class);
+        assertThatThrownBy(() -> WalletOperationMongoStatus.validate(status)).isInstanceOf(BusinessException.class);
+    }
+
     private static void assertObjectEncoding(Enum<?> constant, String json) {
         assertThat(JSON.readTree(JSON.writeValueAsString(constant))).isEqualTo(JSON.readTree(json));
         assertThat(JSON.readValue(json, constant.getDeclaringClass())).isSameAs(constant);

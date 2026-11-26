@@ -110,11 +110,19 @@ class WalletEntityMapperTest {
     void mapsEveryStoredOperationTypeAndStatusInBothDirections() {
         var mapper = org.mapstruct.factory.Mappers.getMapper(WalletOperationEntityMapper.class);
         for (var stored : WalletOperationMongoType.values()) {
+            if (stored == WalletOperationMongoType.UNSPECIFIED || stored == WalletOperationMongoType.ERROR) {
+                org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> mapper.toModelType(stored));
+                continue;
+            }
             var model = mapper.toModelType(stored);
             org.junit.jupiter.api.Assertions.assertEquals("WALLET_OPERATION_TYPE_" + stored.name(), model.name());
             org.junit.jupiter.api.Assertions.assertSame(stored, mapper.toEntityType(model));
         }
         for (var stored : WalletOperationMongoStatus.values()) {
+            if (stored == WalletOperationMongoStatus.UNSPECIFIED || stored == WalletOperationMongoStatus.ERROR) {
+                org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> mapper.toModelStatus(stored));
+                continue;
+            }
             var model = mapper.toModelStatus(stored);
             org.junit.jupiter.api.Assertions.assertEquals("WALLET_OPERATION_STATUS_" + stored.name(), model.name());
             org.junit.jupiter.api.Assertions.assertSame(stored, mapper.toEntityStatus(model));

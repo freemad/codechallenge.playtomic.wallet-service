@@ -22,6 +22,8 @@ public interface WalletOperationEntityMapper extends IEntityToModelMapper<Wallet
     WalletOperationEntity toEntity(WalletOperationModel model);
 
     @EnumMapping(nameTransformationStrategy = MappingConstants.PREFIX_TRANSFORMATION, configuration = "WALLET_OPERATION_TYPE_")
+    @ValueMapping(source = "UNSPECIFIED", target = MappingConstants.THROW_EXCEPTION)
+    @ValueMapping(source = "ERROR", target = MappingConstants.THROW_EXCEPTION)
     WalletOperationType toModelType(WalletOperationMongoType type);
 
     @EnumMapping(nameTransformationStrategy = MappingConstants.STRIP_PREFIX_TRANSFORMATION, configuration = "WALLET_OPERATION_TYPE_")
@@ -30,6 +32,8 @@ public interface WalletOperationEntityMapper extends IEntityToModelMapper<Wallet
     WalletOperationMongoType toEntityType(WalletOperationType type);
 
     @EnumMapping(nameTransformationStrategy = MappingConstants.PREFIX_TRANSFORMATION, configuration = "WALLET_OPERATION_STATUS_")
+    @ValueMapping(source = "UNSPECIFIED", target = MappingConstants.THROW_EXCEPTION)
+    @ValueMapping(source = "ERROR", target = MappingConstants.THROW_EXCEPTION)
     WalletOperationStatus toModelStatus(WalletOperationMongoStatus status);
 
     @EnumMapping(nameTransformationStrategy = MappingConstants.STRIP_PREFIX_TRANSFORMATION, configuration = "WALLET_OPERATION_STATUS_")

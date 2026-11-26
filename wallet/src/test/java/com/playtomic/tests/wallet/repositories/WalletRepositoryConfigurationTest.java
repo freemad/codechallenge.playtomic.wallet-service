@@ -148,6 +148,19 @@ class WalletRepositoryConfigurationTest {
         }
     }
 
+    @ParameterizedTest
+    @ValueSource(ints = {0, 255})
+    void rejectsWritingReservedOperationCodes(int code) {
+        var invalidType = new WalletOperationEntity("op", "wallet", WalletOperationMongoType.ofValue(code), BigDecimal.ONE,
+                "EUR", WalletOperationMongoStatus.PENDING, null, Instant.EPOCH, null);
+        var invalidStatus = new WalletOperationEntity("op", "wallet", WalletOperationMongoType.TOP_UP, BigDecimal.ONE,
+                "EUR", WalletOperationMongoStatus.ofValue(code), null, Instant.EPOCH, null);
+        for (var invalid : new WalletOperationEntity[]{invalidType, invalidStatus}) {
+            assertThatThrownBy(() -> mongo.getConverter().write(invalid, new Document()))
+                    .hasRootCauseInstanceOf(BusinessException.class);
+        }
+    }
+
     private <T extends IEntity<String>> Document roundTrip(T entity, Class<T> type) {
         entity.setNewRecord(true);
         assertThat(entity.isNew()).isTrue();

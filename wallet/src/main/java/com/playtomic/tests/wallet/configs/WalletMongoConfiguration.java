@@ -42,11 +42,11 @@ class WalletMongoConfiguration {
     MongoCustomConversions walletMongoConversions() {
         return MongoCustomConversions.create(adapter -> {
             adapter.registerConverters(ConverterBuilder.writing(WalletOperationMongoType.class, Integer.class,
-                            WalletOperationMongoType::getValue)
-                    .andReading(WalletOperationMongoType::ofValue).getConverters());
+                            type -> WalletOperationMongoType.validate(type).getValue())
+                    .andReading(code -> WalletOperationMongoType.validate(WalletOperationMongoType.ofValue(code))).getConverters());
             adapter.registerConverters(ConverterBuilder.writing(WalletOperationMongoStatus.class, Integer.class,
-                            WalletOperationMongoStatus::getValue)
-                    .andReading(WalletOperationMongoStatus::ofValue).getConverters());
+                            status -> WalletOperationMongoStatus.validate(status).getValue())
+                    .andReading(code -> WalletOperationMongoStatus.validate(WalletOperationMongoStatus.ofValue(code))).getConverters());
         });
     }
 }
