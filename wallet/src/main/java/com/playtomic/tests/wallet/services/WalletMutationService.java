@@ -1,8 +1,10 @@
 package com.playtomic.tests.wallet.services;
 
+import com.playtomic.tests.common.contracts.StripeSimulatorMoney;
 import com.playtomic.tests.common.models.Error;
 import com.playtomic.tests.common.models.Outcome;
 import com.playtomic.tests.common.resilience.ReactiveCircuitBreaker;
+import com.playtomic.tests.common.utils.ExceptionNormalizer;
 import com.playtomic.tests.wallet.enums.WalletOperationType;
 import com.playtomic.tests.wallet.exceptions.WalletMutationException;
 import com.playtomic.tests.wallet.http.stripe.StripeAmountTooSmallException;
@@ -87,6 +89,10 @@ public class WalletMutationService {
                             return Mono.error(new WalletMutationException(CURRENCY_MISMATCH,
                                     "Operation currency must match the wallet"));
                         }
+                        if (STRIPE.equals(request.getProvider()) && (!StripeSimulatorMoney.CURRENCY.equals(request.getCurrency())
+                                || !StripeSimulatorMoney.accepts(request.getAmount()))) {
+                            return Mono.error(invalid("Amount or currency is unsupported by the Stripe simulator"));
+                        }
                         return operationService.reserve(request).flatMap(WalletOutcome::optionalValue)
                                 .doOnNext(winner -> RESERVED.operation(id).addKeyValue("operationType", request.getType().getName()).log())
                                 .flatMap(onReserved)
@@ -129,6 +135,9 @@ public class WalletMutationService {
                                         ? apply(id) : Mono.just(recorded));
                     }
                     Throwable error = signal.getThrowable();
+                    if (ExceptionNormalizer.mustPropagate(error)) {
+                        return Mono.error(error);
+                    }
                     if (error instanceof StripeAmountTooSmallException) {
                         DECLINED.operation(id).log();
                         return operationService.markPaymentOutcome(id, WALLET_OPERATION_STATUS_PAYMENT_REJECTED).flatMap(WalletOutcome::optionalValue);

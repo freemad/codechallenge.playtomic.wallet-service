@@ -67,6 +67,7 @@ public class WalletOutboxRelay {
                 .doOnNext(acknowledged -> (acknowledged ? ACKNOWLEDGED : LOST_LEASE).operation(event.getId()).log())
                 .onErrorMap(ExceptionNormalizer::normalize)
                 .onErrorResume(BusinessException.class, error -> {
+                    if (ExceptionNormalizer.mustPropagate(error)) return Mono.error(error);
                     DELIVERY_INCOMPLETE.operation(event.getId()).addKeyValue("errorCode", error.getErrorCode().getCode()).log();
                     return Mono.just(false);
                 });

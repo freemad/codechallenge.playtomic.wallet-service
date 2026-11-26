@@ -104,6 +104,9 @@ class WalletServiceTest {
         StepVerifier.create(service.update(model)).expectError(UnsupportedOperationException.class).verify(DEADLINE);
         StepVerifier.create(service.saveAllAsCollection(List.of(model)))
                 .expectError(UnsupportedOperationException.class).verify(DEADLINE);
+        IEntityService<WalletEntity, WalletModel, String> shared = service;
+        StepVerifier.create(shared.saveAllAsCollection(reactor.core.publisher.Flux.just(model)))
+                .expectError(UnsupportedOperationException.class).verify(DEADLINE);
         StepVerifier.create(service.deleteById(model.getId()))
                 .expectError(UnsupportedOperationException.class).verify(DEADLINE);
         verifyNoInteractions(repository, balanceOperations);

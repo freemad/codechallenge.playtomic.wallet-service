@@ -1,6 +1,8 @@
 package com.playtomic.tests.wallet.services.client;
 
+import com.playtomic.tests.common.utils.ExceptionNormalizer;
 import com.playtomic.tests.wallet.configs.WalletPaymentProviderProps;
+import com.playtomic.tests.wallet.dtos.FixtureWire.Envelope;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -23,8 +25,15 @@ public final class RedsysClient {
     }
 
     /** Posts the authorization envelope to the configured Redsys endpoint. */
-    public Mono<JsonNode> authorize(Map<String, String> envelope) {
-        return http.post(settings.getAuthorizationUri(), envelope, HttpStatus.OK, null)
-                .map(response -> Objects.requireNonNull(response.getBody()));
+    public Mono<Envelope> authorize(Envelope envelope) {
+        return Mono.defer(() -> http.post(settings.getAuthorizationUri(), envelope, HttpStatus.OK, null))
+                .map(response -> Objects.requireNonNull(response.getBody()))
+                .map(body -> new Envelope(text(body, "Ds_MerchantParameters"), text(body, "Ds_SignatureVersion"), text(body, "Ds_Signature")))
+                .onErrorMap(ExceptionNormalizer::normalize);
+    }
+
+    private static String text(JsonNode body, String field) {
+        var node = body.path(field);
+        return node.isString() ? node.asString() : "";
     }
 }

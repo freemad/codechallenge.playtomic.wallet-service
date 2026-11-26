@@ -38,7 +38,7 @@ public class WalletOutcomeHandler {
     private static <T> Mono<Outcome<T, Error>> prepare(Mono<T> result) {
         return result.<Outcome<T, Error>>map(Outcome::success)
                 .onErrorResume(Exception.class, failure -> {
-                    if (!(ExceptionNormalizer.normalize(failure) instanceof BusinessException business)) {
+                    if (ExceptionNormalizer.mustPropagate(failure) || !(ExceptionNormalizer.normalize(failure) instanceof BusinessException business)) {
                         return Mono.error(failure);
                     }
                     Error error = business.toError();

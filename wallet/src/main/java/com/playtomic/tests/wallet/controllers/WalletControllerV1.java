@@ -50,6 +50,7 @@ public class WalletControllerV1 {
     private final WalletTopUpHttpProps topUpHttpProps;
 
     private static final String PAYMENT_PROVIDERS_SEGMENT = "payment-providers";
+    private static final String WALLET_PATH = "/{id:(?!(?:log|" + PAYMENT_PROVIDERS_SEGMENT + ")\\z)[\\s\\S]+}";
 
     /** Returns a timestamp in the response envelope for a smoke check. */
     @GetMapping("/log")
@@ -60,10 +61,10 @@ public class WalletControllerV1 {
 
     // Reserve the discovery path even when its handler is not registered.
     /** Looks up the wallet by identifier and returns its result or mapped error in the HTTP envelope. */
-    @GetMapping("/{id:(?!" + PAYMENT_PROVIDERS_SEGMENT + "\\z)[\\s\\S]+}")
+    @GetMapping(WALLET_PATH)
     public Mono<ResponseEntity<ResponseDtoV1>> getWallet(@PathVariable("id") String id, ServerWebExchange exchange) {
         return walletService.findById(id).map(outcome -> toResponse(outcome, exchange.getRequest().getId(),
-                walletResponseMapper::toDto, lookupStatus(outcome), CacheControl.empty()));
+                walletResponseMapper::toDto, lookupStatus(outcome), CacheControl.noStore()));
     }
 
     /** Lists configured top-up providers without probing availability or charging a card. */
@@ -75,7 +76,7 @@ public class WalletControllerV1 {
 
     /** Handles a local-demo card top-up; requires the configured synthetic card and exactly one nonblank idempotency key. */
     @LocalTopUpRoute
-    @PostMapping(path = "/{id}/top-ups", consumes = MediaType.APPLICATION_JSON_VALUE,
+    @PostMapping(path = WALLET_PATH + "/top-ups", consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
     public Mono<ResponseEntity<ResponseDtoV1>> topUp(@PathVariable("id") String id,
                                                     @RequestHeader(HEADER_IDEMPOTENCY_KEY) String key,

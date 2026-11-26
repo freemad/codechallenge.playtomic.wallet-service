@@ -93,16 +93,20 @@ public class WalletAuditMongoOperations {
         return mongo.insert(evidence, "wallet_balance_audit").then(mongo.insert(alert, ALERTS)).then();
     }
 
+    /** Identity and ownership fence of a discrepancy alert leased for delivery. */
+    public record AlertClaim(String id, String token) { }
+
     /** Leases an unpublished discrepancy alert for delivery. */
-    public Mono<Document> claimAlert(Instant now, Duration lease) {
+    public Mono<AlertClaim> claimAlert(Instant now, Duration lease) {
         return mongo.findAndModify(Query.query(Criteria.where("publishedAt").isNull().and("availableAt").lte(now))
-                        .with(Sort.by("availableAt")), claimUpdate(now, lease), FindAndModifyOptions.options().returnNew(true), Document.class, ALERTS);
+                        .with(Sort.by("availableAt")), claimUpdate(now, lease), FindAndModifyOptions.options().returnNew(true), Document.class, ALERTS)
+                .map(row -> new AlertClaim(row.getString("_id"), row.getString("token")));
     }
 
-    /** Marks the claimed discrepancy alert published only when the lease token matches. */
-    public Mono<Void> acknowledge(Document claim) {
-        return mongo.updateFirst(Query.query(Criteria.where("_id").is(claim.getString("_id")).and("token").is(claim.getString("token"))),
-                new Update().currentDate("publishedAt").unset("token"), ALERTS).then();
+    /** Returns false when a replacement owner or earlier acknowledgment invalidated the claim. */
+    public Mono<Boolean> acknowledge(AlertClaim claim) {
+        return mongo.updateFirst(Query.query(Criteria.where("_id").is(claim.id()).and("token").is(claim.token())),
+                new Update().currentDate("publishedAt").unset("token"), ALERTS).map(result -> result.getModifiedCount() == 1);
     }
 
     private static Update claimUpdate(Instant now, Duration lease) {

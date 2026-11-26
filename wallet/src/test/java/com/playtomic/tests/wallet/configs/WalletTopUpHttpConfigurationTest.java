@@ -97,6 +97,20 @@ class WalletTopUpHttpConfigurationTest {
                         .extracting(handler -> handler.getMethod().getName()).containsExactlyInAnyOrder("log", "getWallet"));
     }
 
+    @Test
+    void reservesBothLiteralSegmentsRegardlessOfProfile() {
+        for (var runner : java.util.List.of(webRunner, localRunner())) {
+            runner.run(context -> {
+                var client = WebTestClient.bindToApplicationContext(context).build();
+                client.get().uri("/api/v1/wallets/log").exchange().expectStatus().isOk();
+                for (String name : java.util.List.of("log", "payment-providers")) {
+                    client.post().uri("/api/v1/wallets/" + name + "/top-ups").exchange().expectStatus().isNotFound();
+                }
+                verifyNoInteractions(context.getBean(WalletLookupService.class), context.getBean(WalletMutationService.class));
+            });
+        }
+    }
+
     private ReactiveWebApplicationContextRunner localRunner() {
         return webRunner.withPropertyValues("spring.profiles.active=local-top-up");
     }
