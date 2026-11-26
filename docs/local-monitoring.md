@@ -16,3 +16,11 @@ stack up -d --build
 Override the loopback ports with `GRAFANA_HTTP_PORT`, `MONGO_EXPRESS_HTTP_PORT`, or `WALLET_HTTP_PORT` if necessary. To combine metrics with the [log pipeline](wallet-logging.md), also pass `-f deployment/compose.elastic.yaml` and supply that overlay’s passwords. `stack down` stops the stack but retains named volumes, including Grafana state, Prometheus history and wallet data. Do not use `down -v` on a project with data you need.
 
 Run `sh deployment/test-monitoring.sh` for a disposable end-to-end check with separate ports and volumes. It queries both scrape targets through Grafana, checks an actual wallet HTTP meter, and verifies UI access controls.
+
+To change scrape targets or timing, set `PROMETHEUS_CONFIG_FILE` to a complete Prometheus YAML file (default: `./monitoring/prometheus.yaml`, relative to `deployment/`). Set `GRAFANA_PROMETHEUS_INTERVAL` to the same scrape interval (default: `15s`); it does not change Prometheus itself. `GRAFANA_PROMETHEUS_URL` defaults to `http://prometheus:9090`, and `GRAFANA_DASHBOARD_FOLDER` defaults to `Wallet`.
+
+## Wallet charts
+
+Open [Wallet overview](http://127.0.0.1:3000/d/wallet-overview/wallet-overview) or choose **Dashboards → Wallet → Wallet overview**. The dashboard is provisioned automatically and refreshes every 15 seconds. It shows scrape health, API requests per second by route and HTTP status, mean request latency by route, and emitted mutation results by operation and business status.
+
+To see traffic without performing a payment, call `GET /api/v1/wallets/log` several times across two or more scrapes. Latency can be blank when there are no requests. Mutation series appear only after a top-up or internal spend emits a result, and include replays; they do not count unique payments.

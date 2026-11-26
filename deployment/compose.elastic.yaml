@@ -18,20 +18,20 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: '1'
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'false'
       KAFKA_LOG_DIRS: /var/lib/kafka/data
-      KAFKA_HEAP_OPTS: -Xms128m -Xmx256m
+      KAFKA_HEAP_OPTS: ${KAFKA_HEAP_OPTS:--Xms128m -Xmx256m}
     volumes: [log-kafka-data:/var/lib/kafka/data]
     healthcheck:
       test: [CMD-SHELL, '/opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list >/dev/null']
-      interval: 10s
-      timeout: 10s
-      retries: 30
+      interval: ${KAFKA_HEALTH_INTERVAL:-10s}
+      timeout: ${KAFKA_HEALTH_TIMEOUT:-10s}
+      retries: ${KAFKA_HEALTH_RETRIES:-30}
   log-topic:
     image: apache/kafka:4.0.0
     networks: [elastic-backend]
     depends_on:
       kafka: {condition: service_healthy}
     entrypoint: [/opt/kafka/bin/kafka-topics.sh]
-    command: [--bootstrap-server, 'kafka:9092', --create, --if-not-exists, --topic, service.logs.v1, --partitions, '1', --replication-factor, '1', --config, retention.ms=604800000]
+    command: [--bootstrap-server, 'kafka:9092', --create, --if-not-exists, --topic, service.logs.v1, --partitions, '${LOG_TOPIC_PARTITIONS:-1}', --replication-factor, '1', --config, 'retention.ms=${LOG_TOPIC_RETENTION_MS:-604800000}']
   connect:
     <<: *connect
     networks: [elastic-backend]
@@ -55,12 +55,12 @@ services:
       CONNECT_CONFIG_PROVIDERS_ENV_CLASS: org.apache.kafka.common.config.provider.EnvVarConfigProvider
       CONNECT_CONFIG_PROVIDERS_ENV_PARAM_ALLOWLIST_PATTERN: ELASTIC_PASSWORD
       ELASTIC_PASSWORD: ${ELASTIC_PASSWORD:?set a local Elasticsearch password}
-      KAFKA_HEAP_OPTS: -Xms128m -Xmx384m
+      KAFKA_HEAP_OPTS: ${CONNECT_HEAP_OPTS:--Xms128m -Xmx384m}
     healthcheck:
       test: [CMD-SHELL, 'curl -fsS localhost:8083/connector-plugins | grep -q io.confluent.connect.elasticsearch.ElasticsearchSinkConnector']
-      interval: 10s
-      timeout: 5s
-      retries: 30
+      interval: ${CONNECT_HEALTH_INTERVAL:-10s}
+      timeout: ${CONNECT_HEALTH_TIMEOUT:-5s}
+      retries: ${CONNECT_HEALTH_RETRIES:-30}
   register-sink:
     <<: *connect
     networks: [elastic-backend]
@@ -77,14 +77,14 @@ services:
       xpack.security.http.ssl.enabled: 'false'
       xpack.security.autoconfiguration.enabled: 'false'
       ELASTIC_PASSWORD: ${ELASTIC_PASSWORD:?set a local Elasticsearch password}
-      ES_JAVA_OPTS: -Xms512m -Xmx512m
+      ES_JAVA_OPTS: ${ES_JAVA_OPTS:--Xms512m -Xmx512m}
     networks: [elastic-backend]
     volumes: [elastic-data:/usr/share/elasticsearch/data]
     healthcheck:
       test: [CMD-SHELL, 'curl -fsS -u "elastic:$$ELASTIC_PASSWORD" http://localhost:9200/_cluster/health >/dev/null']
-      interval: 10s
-      timeout: 5s
-      retries: 30
+      interval: ${ELASTIC_HEALTH_INTERVAL:-10s}
+      timeout: ${ELASTIC_HEALTH_TIMEOUT:-5s}
+      retries: ${ELASTIC_HEALTH_RETRIES:-30}
   collector-tls:
     image: eclipse-temurin:25-jre-noble
     user: '0'
@@ -111,6 +111,8 @@ services:
         chown 10001 /tls/server.key /tls/server.crt
   elastic-collector:
     image: timberio/vector:0.49.0-debian
+    environment:
+      LOG_COLLECTOR_PORT: ${LOG_COLLECTOR_PORT:-5044}
     user: '10001'
     depends_on:
       collector-tls: {condition: service_completed_successfully}
@@ -123,7 +125,7 @@ services:
     volumes: [collector-trust:/trust:ro]
     environment:
       SPRING_PROFILES_INCLUDE: log-elastic
-      WALLET_LOG_ELASTIC_DESTINATION: elastic-collector:5044
+      WALLET_LOG_ELASTIC_DESTINATION: elastic-collector:${LOG_COLLECTOR_PORT:-5044}
       SPRING_PROFILES_ACTIVE: ${WALLET_SPRING_PROFILES:-develop}
       JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/trust/cacerts
       LOGGING_LEVEL_WALLET_EVENTS: ${LOGGING_LEVEL_WALLET_EVENTS:-INFO}
@@ -133,7 +135,7 @@ services:
     volumes: [collector-trust:/trust:ro]
     environment:
       SPRING_PROFILES_INCLUDE: log-elastic
-      SIMULATOR_LOG_ELASTIC_DESTINATION: elastic-collector:5044
+      SIMULATOR_LOG_ELASTIC_DESTINATION: elastic-collector:${LOG_COLLECTOR_PORT:-5044}
       JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/trust/cacerts
 volumes:
   log-kafka-data:

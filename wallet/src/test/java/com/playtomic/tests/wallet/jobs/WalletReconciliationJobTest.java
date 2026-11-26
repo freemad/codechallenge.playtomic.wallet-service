@@ -75,7 +75,7 @@ class WalletReconciliationJobTest {
     void normalizesAnIndexFailureAfterReleasingTheLease() {
         var failure = new IllegalStateException("index unavailable");
         var cleanup = PublisherProbe.<Void>empty();
-        when(leases.acquire(JOB, SETTINGS.lease())).thenReturn(Mono.just("lease"));
+        when(leases.acquire(JOB, SETTINGS.getLease())).thenReturn(Mono.just("lease"));
         when(leases.release(JOB, "lease")).thenReturn(cleanup.mono());
         when(operations.ensureReconciliationIndex()).thenReturn(Mono.error(failure));
 
@@ -91,7 +91,7 @@ class WalletReconciliationJobTest {
     void defersAnOrdinaryReceiptFailureButNotAWrappedInterruption() {
         var operation = mock(WalletOperationModel.class);
         when(operation.getId()).thenReturn("operation");
-        when(leases.acquire(JOB, SETTINGS.lease())).thenReturn(Mono.just("lease"));
+        when(leases.acquire(JOB, SETTINGS.getLease())).thenReturn(Mono.just("lease"));
         when(leases.release(JOB, "lease")).thenReturn(Mono.empty());
         when(operations.ensureReconciliationIndex()).thenReturn(Mono.just("index"));
         when(operations.reconciliationBatch(eq(WALLET_OPERATION_STATUS_PENDING), any(), anyInt())).thenReturn(Flux.empty());
@@ -109,7 +109,7 @@ class WalletReconciliationJobTest {
     @Test
     void usesConfiguredLeaseBatchLimitAndCutoffs() {
         String token = "lease-token";
-        when(leases.acquire(JOB, SETTINGS.lease())).thenReturn(Mono.just(token));
+        when(leases.acquire(JOB, SETTINGS.getLease())).thenReturn(Mono.just(token));
         when(leases.release(JOB, token)).thenReturn(Mono.empty());
         when(operations.ensureReconciliationIndex()).thenReturn(Mono.just("index"));
         when(operations.reconciliationBatch(any(), any(), anyInt())).thenReturn(Flux.empty());
@@ -119,11 +119,11 @@ class WalletReconciliationJobTest {
         Instant end = Instant.now();
 
         verify(operations).reconciliationBatch(eq(WALLET_OPERATION_STATUS_PENDING), argThat(cutoff ->
-                !cutoff.isBefore(start.minus(SETTINGS.stalePendingAge()))
-                        && !cutoff.isAfter(end.minus(SETTINGS.stalePendingAge()))), eq(SETTINGS.batchSize()));
+                !cutoff.isBefore(start.minus(SETTINGS.getStalePendingAge()))
+                        && !cutoff.isAfter(end.minus(SETTINGS.getStalePendingAge()))), eq(SETTINGS.getBatchSize()));
         verify(operations).reconciliationBatch(eq(WALLET_OPERATION_STATUS_RECEIPT_RECORDED), argThat(cutoff ->
-                !cutoff.isBefore(start.minus(SETTINGS.receiptDelay()))
-                        && !cutoff.isAfter(end.minus(SETTINGS.receiptDelay()))), eq(SETTINGS.batchSize()));
+                !cutoff.isBefore(start.minus(SETTINGS.getReceiptDelay()))
+                        && !cutoff.isAfter(end.minus(SETTINGS.getReceiptDelay()))), eq(SETTINGS.getBatchSize()));
         verify(leases).release(JOB, token);
     }
 }

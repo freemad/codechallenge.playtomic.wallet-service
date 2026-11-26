@@ -2,7 +2,7 @@ sources:
   services:
     type: socket
     mode: tcp
-    address: 0.0.0.0:5044
+    address: "0.0.0.0:${LOG_COLLECTOR_PORT:-5044}"
     tls:
       enabled: true
       crt_file: /tls/server.crt

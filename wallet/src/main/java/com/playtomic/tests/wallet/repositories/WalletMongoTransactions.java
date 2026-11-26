@@ -24,7 +24,7 @@ public class WalletMongoTransactions implements IWalletTransactions {
 
     @Override
     public <T> Mono<T> execute(Mono<T> work) {
-        return walletTransactions.execute(transaction -> work).singleOrEmpty()
+        return work.as(walletTransactions::transactional)
                 .retryWhen(Retry.backoff(MAX_RETRIES, MIN_BACKOFF)
                         .maxBackoff(MAX_BACKOFF)
                         .filter(WalletMongoTransactions::isTransientTransactionError)

@@ -24,3 +24,4 @@ public class WalletAuditProps {
         this.batchSize = batchSize;
     }
 }
+

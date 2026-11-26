@@ -78,14 +78,14 @@ class WalletOutboxRelayTest {
 
     @Test
     void limitsClaimsToTheConfiguredBatchSize() {
-        when(outbox.claim(SETTINGS.claimLease())).thenReturn(Mono.just(event));
+        when(outbox.claim(SETTINGS.getClaimLease())).thenReturn(Mono.just(event));
         when(kafka.send(anyString(), anyString(), anyString()))
                 .thenReturn(CompletableFuture.completedFuture(mock(SendResult.class)));
         when(outbox.acknowledge(event)).thenReturn(Mono.just(true));
 
         StepVerifier.create(relay.publish()).expectComplete().verify(Duration.ofSeconds(5));
 
-        verify(outbox, times(2)).claim(SETTINGS.claimLease());
+        verify(outbox, times(2)).claim(SETTINGS.getClaimLease());
         verify(outbox, times(2)).acknowledge(event);
     }
 
