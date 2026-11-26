@@ -16,11 +16,11 @@ public interface WalletOutboxEntityMapper extends IEntityToModelMapper<WalletOut
     @Mapping(target = "newRecord", ignore = true)
     WalletOutboxEntity toEntity(WalletOutboxModel model);
 
-    default WalletEventType toEventType(String wireValue) {
-        return WalletEventType.fromWireValue(wireValue);
+    default WalletEventType toEventType(int value) {
+        return WalletEventType.ofValue(value);
     }
 
-    default String toWireValue(WalletEventType eventType) {
-        return eventType.getWireValue();
+    default int toEventTypeValue(WalletEventType eventType) {
+        return eventType.getValue();
     }
 }

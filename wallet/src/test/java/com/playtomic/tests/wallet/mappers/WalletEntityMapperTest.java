@@ -9,6 +9,8 @@ import com.playtomic.tests.wallet.entities.WalletOperationEntity;
 import com.playtomic.tests.wallet.entities.WalletOutboxEntity;
 import com.playtomic.tests.wallet.entities.WalletPaymentReceiptEntity;
 import com.playtomic.tests.wallet.enums.WalletEventType;
+import com.playtomic.tests.wallet.enums.WalletOperationMongoStatus;
+import com.playtomic.tests.wallet.enums.WalletOperationMongoType;
 import com.playtomic.tests.wallet.enums.WalletOperationStatus;
 import com.playtomic.tests.wallet.enums.WalletOperationType;
 import com.playtomic.tests.wallet.models.WalletJobLeaseModel;
@@ -18,7 +20,6 @@ import com.playtomic.tests.wallet.models.WalletOutboxModel;
 import com.playtomic.tests.wallet.models.WalletPaymentReceiptModel;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mapstruct.factory.Mappers;
 import reactor.test.StepVerifier;
@@ -47,8 +48,8 @@ class WalletEntityMapperTest {
         var type = WalletOperationType.WALLET_OPERATION_TYPE_TOP_UP;
         var status = WalletOperationStatus.WALLET_OPERATION_STATUS_PENDING;
         assertRoundTrip(Mappers.getMapper(WalletOperationEntityMapper.class),
-                new WalletOperationEntity("op", "wallet", WalletOperationEntity.Type.TOP_UP, amount, "EUR",
-                        WalletOperationEntity.Status.PENDING, null, time, "stripe"),
+                new WalletOperationEntity("op", "wallet", WalletOperationMongoType.TOP_UP, amount, "EUR",
+                        WalletOperationMongoStatus.PENDING, null, time, "stripe"),
                 new WalletOperationModel("op", "wallet", type, amount, "EUR", status, null, time, "stripe"));
     }
 
@@ -67,29 +68,27 @@ class WalletEntityMapperTest {
         var balance = new BigDecimal("9007199254740993.01");
         var mapper = Mappers.getMapper(WalletOutboxEntityMapper.class);
         assertRoundTrip(mapper,
-                new WalletOutboxEntity("op", "wallet", "WalletCredited", 1, BigDecimal.ONE, "EUR", balance,
+                new WalletOutboxEntity("op", "wallet", 1, 1, BigDecimal.ONE, "EUR", balance,
                         time, available, "fence", null),
                 new WalletOutboxModel("op", "wallet", WalletEventType.WALLET_CREDITED, 1, BigDecimal.ONE, "EUR",
                         balance, time, available, "fence", null));
         var published = time.plusSeconds(3);
         assertRoundTrip(mapper,
-                new WalletOutboxEntity("op", "wallet", "WalletDebited", 2, BigDecimal.ONE, "EUR", balance,
+                new WalletOutboxEntity("op", "wallet", 2, 2, BigDecimal.ONE, "EUR", balance,
                         time, available, null, published),
                 new WalletOutboxModel("op", "wallet", WalletEventType.WALLET_DEBITED, 2, BigDecimal.ONE, "EUR",
                         balance, time, available, null, published));
     }
 
     @ParameterizedTest
-    @NullSource
-    @ValueSource(strings = {"WALLET_CREDITED", "walletCredited", "WalletReversed"})
-    void rejectsInvalidStoredOutboxEventType(String eventType) {
+    @ValueSource(ints = {0, 3, 255})
+    void rejectsInvalidStoredOutboxEventType(int eventType) {
         var time = Instant.parse("2026-11-25T10:00:00Z");
         var entity = new WalletOutboxEntity("op", "wallet", eventType, 1, BigDecimal.ONE,
                 "EUR", BigDecimal.ONE, time, time, null, null);
         var mapper = Mappers.getMapper(WalletOutboxEntityMapper.class);
-
         StepVerifier.create(mapper.toMonoModel(entity))
-                .expectError(IllegalArgumentException.class).verify(DEADLINE);
+                .expectError(com.playtomic.tests.common.exceptions.BusinessException.class).verify(DEADLINE);
     }
 
     @Test
@@ -104,19 +103,26 @@ class WalletEntityMapperTest {
     void reportsInvalidStoredDataOnSubscription() {
         var conversion = mapper.toMonoModel(new WalletEntity(" ", BigDecimal.ZERO, "EUR"));
 
-        StepVerifier.create(conversion)
-                .expectError(IllegalArgumentException.class).verify(DEADLINE);
+        StepVerifier.create(conversion).expectError(IllegalArgumentException.class).verify(DEADLINE);
     }
 
     @Test
     void mapsEveryStoredOperationTypeAndStatusInBothDirections() {
         var mapper = org.mapstruct.factory.Mappers.getMapper(WalletOperationEntityMapper.class);
-        for (var stored : WalletOperationEntity.Type.values()) {
+        for (var stored : WalletOperationMongoType.values()) {
+            if (stored == WalletOperationMongoType.UNSPECIFIED || stored == WalletOperationMongoType.ERROR) {
+                org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> mapper.toModelType(stored));
+                continue;
+            }
             var model = mapper.toModelType(stored);
             org.junit.jupiter.api.Assertions.assertEquals("WALLET_OPERATION_TYPE_" + stored.name(), model.name());
             org.junit.jupiter.api.Assertions.assertSame(stored, mapper.toEntityType(model));
         }
-        for (var stored : WalletOperationEntity.Status.values()) {
+        for (var stored : WalletOperationMongoStatus.values()) {
+            if (stored == WalletOperationMongoStatus.UNSPECIFIED || stored == WalletOperationMongoStatus.ERROR) {
+                org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> mapper.toModelStatus(stored));
+                continue;
+            }
             var model = mapper.toModelStatus(stored);
             org.junit.jupiter.api.Assertions.assertEquals("WALLET_OPERATION_STATUS_" + stored.name(), model.name());
             org.junit.jupiter.api.Assertions.assertSame(stored, mapper.toEntityStatus(model));

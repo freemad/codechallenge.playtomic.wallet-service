@@ -313,3 +313,14 @@ Consider that this service must work in a microservices environment in high avai
 You can spend as much time as you need but we think that 4 hours is enough to show [the requirements of this job.](OFFER.md)
 You don't have to document your code, but you can write down anything you want to explain or anything you have skipped.
 You don't need to write tests for everything, but we would like to see different types of tests.
+
+### Upgrading existing MongoDB data
+
+`wallet_operations.type`, `wallet_operations.status`, and `wallet_outbox.eventType`
+use stable BSON int32 codes. HTTP statuses and Kafka event labels are unchanged.
+For a database written by an older wallet, stop **all** wallet instances and workers,
+back up the database, then run `mongosh "$WALLET_DB_URI" --file deployment/migrate-enum-values.js`
+with the wallet database explicitly named in the URI. The script validates existing
+values before writing and can be rerun after interruption. Start the new wallet only
+when it completes successfully: numeric filters do not match old string values.
+Fresh databases need no migration. Do not run old and new writers together.

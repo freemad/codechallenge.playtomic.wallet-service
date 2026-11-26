@@ -4,6 +4,8 @@ import com.playtomic.tests.common.exceptions.BusinessException;
 import com.playtomic.tests.wallet.contracts.IWalletEntityService;
 import com.playtomic.tests.wallet.entities.WalletOperationEntity;
 import com.playtomic.tests.wallet.enums.WalletErrorCode;
+import com.playtomic.tests.wallet.enums.WalletOperationMongoStatus;
+import com.playtomic.tests.wallet.enums.WalletOperationMongoType;
 import com.playtomic.tests.wallet.enums.WalletOperationStatus;
 import com.playtomic.tests.wallet.mappers.WalletOperationEntityMapper;
 import com.playtomic.tests.wallet.models.WalletOperationModel;
@@ -53,7 +55,7 @@ public class WalletOperationEntityService implements IWalletEntityService<Wallet
 
     public Mono<WalletOperationModel> transitionTopUp(String id, WalletOperationStatus next, WalletOperationStatus... expected) {
         return Mono.defer(() -> mongoOperations.transitionTopUp(id, mapper.toEntityStatus(next),
-                        Arrays.stream(expected).map(mapper::toEntityStatus).toArray(WalletOperationEntity.Status[]::new)))
+                        Arrays.stream(expected).map(mapper::toEntityStatus).toArray(WalletOperationMongoStatus[]::new)))
                 .flatMap(this::mapOperation);
     }
 
@@ -71,7 +73,7 @@ public class WalletOperationEntityService implements IWalletEntityService<Wallet
 
     public Flux<WalletOperationModel> reconciliationBatch(WalletOperationStatus status, Instant cutoff, int limit) {
         return repository.findByTypeAndStatusAndUpdatedAtLessThanEqualOrderByUpdatedAtAscIdAsc(
-                        WalletOperationEntity.Type.TOP_UP, mapper.toEntityStatus(status), cutoff, PageRequest.ofSize(limit))
+                        WalletOperationMongoType.TOP_UP, mapper.toEntityStatus(status), cutoff, PageRequest.ofSize(limit))
                 .concatMap(this::mapOperation);
     }
 

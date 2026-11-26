@@ -29,7 +29,7 @@ public class WalletOutboxEntity implements IEntity<String> {
     @MongoId
     String id;
     String walletId;
-    String eventType;
+    int eventType;
     int schemaVersion;
     @Field(targetType = FieldType.DECIMAL128)
     BigDecimal amount;

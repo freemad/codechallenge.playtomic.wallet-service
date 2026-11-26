@@ -33,7 +33,7 @@ class WalletOutboxServiceTest {
     private final WalletOutboxEntityService service = new WalletOutboxEntityService(repository, mapper, operations);
     private final WalletOutboxModel event = new WalletOutboxModel("event", "wallet", WalletEventType.WALLET_CREDITED,
             1, BigDecimal.ONE, "EUR", BigDecimal.TEN, NOW, NOW, "lease", null);
-    private final WalletOutboxEntity entity = new WalletOutboxEntity("event", "wallet", "WalletCredited",
+    private final WalletOutboxEntity entity = new WalletOutboxEntity("event", "wallet", WalletEventType.WALLET_CREDITED.getValue(),
             1, BigDecimal.ONE, "EUR", BigDecimal.TEN, NOW, NOW, "lease", null);
 
     @Test
