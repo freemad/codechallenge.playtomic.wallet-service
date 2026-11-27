@@ -2,6 +2,22 @@
 
 **Scope:** the implemented proof of concept, not a proposed production platform. The required operations are lookup and card top-up. The design prioritizes the integrity of money over automatic completion: a delayed credit can be investigated; a second charge is not a safe way to resolve an unknown first one.
 
+## Design rationale
+
+- **Java 25 instead of Java 17.** This standalone exercise can target the latest LTS rather than retain Java 17 compatibility. Java 25 provides a newer maintenance baseline and access to language features finalized after 17, such as pattern matching for `switch`. A patched Java 17 distribution remains a reasonable choice where compatibility matters; choosing a newer release does not by itself establish fewer vulnerabilities.
+- **Reactive I/O instead of a blocking stack.** Wallet lookup waits on MongoDB, and top-up also waits on remote HTTP. WebFlux, WebClient and reactive MongoDB let the service handle concurrent I/O without dedicating a request thread to each wait. A blocking stack, including one using virtual threads on Java 25, would offer simpler control flow and is a credible alternative. Reactive composition is a concurrency choice, not evidence of greater throughput.
+- **More depth where money is at risk.** A direct charge followed by a balance update is enough to demonstrate the happy path, but it does not resolve a lost provider reply or a crash between charging and crediting. Durable reservation and receipt recording add state and writes so a replay does not dispatch another charge and a recorded receipt can settle independently. See the [runtime view](#runtime-view-a-525-top-up) for the transaction boundaries.
+- **Go deeper on the required flow without expanding the API.** Lookup and card top-up are the deliverables. The opt-in reconciliation worker, Kafka relay and balance auditor make recovery, event delivery and drift detection observable without being required for a normal top-up. A smaller implementation could omit those workers; keeping them makes those scenarios testable at the cost of more code and setup. Spending and purchase refunds stay open for the interview, where their API contracts and business rules can be discussed explicitly.
+
+### Interview questions: spending and refunds
+
+| Question | Starting point | What to decide before exposing an endpoint |
+| --- | --- | --- |
+| How would a purchase debit the wallet if two requests race or one is retried? | The internal spend path already checks funds atomically. Keep that guard and define a stable purchase identity so retrying a request cannot debit twice. | Who may initiate a purchase, how the purchase ID is supplied, and what callers receive for insufficient funds or a conflicting replay. |
+| How would a refund credit the wallet without returning more than was spent? | Link refunds to the original purchase and record each as a separate credit rather than rewriting the original debit. Make the refund idempotency check and cumulative refund limit part of the same local transaction. | Who may authorize a refund, whether partial refunds are allowed, and how the API responds to duplicate or concurrent refund requests. |
+
+These are design starting points, not implemented HTTP contracts. There are no public spend, refund or transaction-history routes.
+
 ## Context and deployment
 
 [![Wallet architecture: the wallet owns accounting in MongoDB; the Stripe fixture owns charge decisions. After a timeout, reconciliation reads provider evidence over HTTP without issuing another charge.](system-architecture.svg)](system-architecture.svg)
