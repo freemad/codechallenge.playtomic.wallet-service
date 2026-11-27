@@ -41,8 +41,7 @@ mvn verify -Dwallet.test.mongo.image=mongo:8.3.17-noble
 ```
 
 The reactor builds the `common` library, the `wallet` service, and the local
-payment `simulator`. Legacy sources under the root `src/` are outside the
-reactor. After packaging, run
+payment `simulator`. After packaging, run
 `java -jar wallet/target/exercise-wallet-0.0.3.jar` with `SPRING_MONGODB_URI`
 pointing to a writable MongoDB replica set.
 
