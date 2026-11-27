@@ -44,7 +44,7 @@ First follow [interactive host setup](wallet-reference.md#try-a-local-top-up): s
 | Success and replay | POST €5.25; repeat unchanged, then GET the wallet | Both results `succeeded`; €15.25 after both, not €20.50. |
 | Conflicting reuse | Repeat the successful POST with the same key but amount `5.26` | 409; original operation unchanged. |
 | Invalid input / missing wallet | Omit the key, use a fresh key with USD on the EUR wallet, or submit a valid POST to an unknown ID | 400 for invalid input/currency; 404 for the absent wallet. No charge. |
-| Confirmed decline | Restart **simulator only** with `--payment-simulator.scenario=REJECT`; POST with a fresh key, then replay it | Provider 422 becomes wallet 200 `payment_rejected`; wallet balance unchanged. |
+| Confirmed decline | Restart **simulator only** with `--payment-simulator.scenario=REJECT`; POST with a fresh key, then replay it | Both wallet requests return 422 `payment_rejected`; wallet balance unchanged. |
 | Lost Stripe reply | With the worker off, restart the local simulator with `--payment-simulator.scenario=TIMEOUT`, retaining its MongoDB. POST €5.25 with a fresh key. | Wallet returns `202 review_required`; balance is unchanged. The referenced fixture decision is `ACCEPTED`, but the wallet did not receive the receipt. |
 | Standalone provider protocols | Run [Stripe charge](wallet-reference.md#stripe-charges), [PayPal order and capture](wallet-reference.md#paypal-orders-and-capture) or [Redsys authorization](wallet-reference.md#redsys-rest-authorization) directly against the simulator | Fixture-specific HTTP and response codes are documented with each command. Direct requests do **not** credit a wallet. |
 

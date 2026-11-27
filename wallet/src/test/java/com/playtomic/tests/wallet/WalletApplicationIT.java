@@ -452,7 +452,7 @@ class WalletApplicationIT {
         when(stripe.charge(charge)).thenReturn(Mono.error(new com.playtomic.tests.wallet.http.stripe.StripeAmountTooSmallException()));
         StepVerifier.create(seedWallet(id, "10")).verifyComplete();
         for (int attempt = 0; attempt < 2; attempt++) {
-            postTopUp(id, "key", "1").expectStatus().isOk().expectBody()
+            postTopUp(id, "key", "1").expectStatus().isEqualTo(422).expectBody()
                     .jsonPath("$.success").isEqualTo(true)
                     .jsonPath("$.result.status").isEqualTo("payment_rejected")
                     .jsonPath("$.result.resultingBalance").doesNotHaveJsonPath();
