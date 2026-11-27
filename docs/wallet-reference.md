@@ -155,7 +155,7 @@ different fixture scenario. Use synthetic payment data only.
 
 ## Local payment simulator
 
-The simulator needs no MongoDB or Kafka. It listens on `127.0.0.1:9999` by
+The simulator needs MongoDB for referenced Stripe charges and lookups, but not for headerless fixture calls. It does not need Kafka. It listens on `127.0.0.1:9999` by
 default and serves local Stripe, PayPal, and Redsys fixtures. Use synthetic
 payment data only. Build and run it in a separate terminal:
 
@@ -267,8 +267,15 @@ markers, not cryptographic signatures.
 `SUCCESS` is the default. Restart with `--payment-simulator.scenario=REJECT` for
 declines, or `--payment-simulator.scenario=TIMEOUT` to delay payment responses
 by ten seconds before returning `504`. PayPal order creation works in every mode;
-the scenario applies only to capture. Timeout does not simulate an accepted
-payment with a lost receipt. There are no real credentials, external provider
+the scenario applies only to capture. For a referenced Stripe charge, `TIMEOUT`
+records acceptance before delaying the response, simulating a lost receipt. With
+`WALLET_RECONCILIATION_ENABLED=true`, the wallet looks up reviewed Stripe top-ups
+by their saved reference (`GET /v1/stripe-simulator/charges/{reference}`). The
+worker runs every 15 seconds by default. It records a confirmed receipt for local
+settlement or marks a confirmed decline `payment_rejected`. Missing evidence,
+lookup failures and legacy rows without a reference stay in review; none cause a
+second charge. See [Stripe evidence storage](#stripe-evidence-storage) for database settings.
+There are no real credentials, external provider
 calls, OAuth, callbacks, redirects, or 3-D Secure. The wallet still uses Stripe
 only; the PayPal and Redsys endpoints are standalone fixtures.
 
@@ -339,3 +346,18 @@ with the wallet database explicitly named in the URI. The script validates exist
 values before writing and can be rerun after interruption. Start the new wallet only
 when it completes successfully: numeric filters do not match old string values.
 Fresh databases need no migration. Do not run old and new writers together.
+
+### Stripe evidence storage
+
+The simulator alone accesses `simulator.stripe_charges` in MongoDB.
+Compose uses its existing replica set; for a standalone simulator set `SIMULATOR_MONGODB_URI`
+to a disposable provider database (for example `mongodb://localhost:27017/simulator?directConnection=true&w=majority&readConcernLevel=majority`).
+Keep the wallet's `SPRING_MONGODB_URI` in the wallet process, not the simulator's environment.
+
+For referenced charges the UUID is the document `_id`; amount is Decimal128, currency is EUR,
+and the terminal enum is stored as a stable BSON int32 (`1` = `ACCEPTED`, `2` = `DECLINED`).
+Only acceptance carries a receipt. No card or wallet idempotency key is stored. Reusing the
+reference with the same amount returns the original decision; a different amount returns 409.
+The wallet compares reference, amount and currency before acting. Headerless fixture calls
+remain unjournaled. Old file journals are not imported: retain them for manual investigation,
+not automatic settlement, since they lack payment amounts.

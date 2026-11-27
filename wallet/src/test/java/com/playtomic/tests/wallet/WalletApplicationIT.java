@@ -17,6 +17,7 @@ import com.playtomic.tests.wallet.services.WalletMutationService;
 import com.playtomic.tests.wallet.services.WalletLookupService;
 import com.playtomic.tests.wallet.services.WalletOperationService;
 import com.playtomic.tests.wallet.services.adapter.StripeAdapter;
+import com.playtomic.tests.wallet.services.client.StripeClient;
 import com.playtomic.tests.wallet.services.entity.WalletJobLeaseEntityService;
 import com.playtomic.tests.wallet.services.entity.WalletOperationEntityService;
 import com.playtomic.tests.wallet.services.entity.WalletOutboxEntityService;
@@ -563,7 +564,7 @@ class WalletApplicationIT {
                 BigDecimal.ONE, "EUR", WALLET_OPERATION_STATUS_PENDING, null, stale, "stripe");
         var receipted = new WalletOperationModel("stale-receipt", walletId, WALLET_OPERATION_TYPE_TOP_UP,
                 BigDecimal.ONE, "EUR", WALLET_OPERATION_STATUS_PENDING, null, stale, "stripe");
-        var job = new WalletReconciliationJob(operations, operationEntities, leases, reconciliationProperties);
+        var job = new WalletReconciliationJob(operations, operationEntities, leases, reconciliationProperties, mock(StripeClient.class));
         Query id = Query.query(Criteria.where("_id").is(receipted.getId()));
         Mono<Void> setup = seedWallet(walletId, "1").then(operations.reserve(uncertain))
                 .doOnNext(WalletApplicationIT::presentResult)
@@ -604,7 +605,7 @@ class WalletApplicationIT {
             started.tryEmitEmpty();
             return release.asMono().then(Mono.error(new IllegalStateException("pending transition failed")));
         })).when(commands).markPaymentOutcome(pending.getId(), WALLET_OPERATION_STATUS_REVIEW_REQUIRED);
-        var job = new WalletReconciliationJob(commands, operationEntities, leases, reconciliationProperties);
+        var job = new WalletReconciliationJob(commands, operationEntities, leases, reconciliationProperties, mock(StripeClient.class));
         var setup = seedWallet(walletId, "1").then(operations.reserve(pending)).then(operations.reserve(receipt))
                 .then(operations.recordReceipt(receipt.getId(), "independent-payment"))
                 .then(mongo.updateMulti(Query.query(Criteria.where("walletId").is(walletId)),

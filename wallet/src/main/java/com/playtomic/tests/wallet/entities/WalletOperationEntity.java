@@ -42,6 +42,10 @@ public class WalletOperationEntity implements IEntity<String> {
     Instant updatedAt;
     String provider;
 
+    @NonFinal
+    @Setter
+    String providerReference;
+
     @Transient
     @NonFinal
     @Setter

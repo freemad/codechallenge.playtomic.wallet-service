@@ -3,6 +3,7 @@ package com.playtomic.tests.wallet.configs;
 import com.playtomic.tests.wallet.jobs.WalletReconciliationJob;
 import com.playtomic.tests.wallet.messaging.WalletOutboxRelay;
 import com.playtomic.tests.wallet.services.WalletOperationService;
+import com.playtomic.tests.wallet.services.client.StripeClient;
 import com.playtomic.tests.wallet.services.entity.WalletJobLeaseEntityService;
 import com.playtomic.tests.wallet.services.entity.WalletOperationEntityService;
 import com.playtomic.tests.wallet.services.entity.WalletOutboxEntityService;
@@ -61,6 +62,7 @@ class WalletWorkerPropsTest {
         when(leases.acquire(anyString(), any())).thenReturn(Mono.empty());
         runner.withBean(TaskScheduler.class, () -> mock(TaskScheduler.class))
                 .withBean(WalletJobLeaseEntityService.class, () -> leases)
+                .withBean(StripeClient.class, () -> mock(StripeClient.class))
                 .withBean(WalletOperationService.class, () -> mock(WalletOperationService.class))
                 .withBean(WalletOperationEntityService.class, () -> mock(WalletOperationEntityService.class))
                 .withBean(WalletOutboxEntityService.class, () -> mock(WalletOutboxEntityService.class))

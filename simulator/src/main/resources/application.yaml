@@ -1,3 +1,8 @@
 server:
   address: "${SERVER_ADDRESS:127.0.0.1}"
   port: "${SERVER_PORT:9999}"
+spring:
+  mongodb:
+    uri: "${SIMULATOR_MONGODB_URI:mongodb://localhost:27017/simulator?directConnection=true&w=majority&readConcernLevel=majority}"
+payment-simulator:
+  scenario: "${PAYMENT_SIMULATOR_SCENARIO:SUCCESS}"

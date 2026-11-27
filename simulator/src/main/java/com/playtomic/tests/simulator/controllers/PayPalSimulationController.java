@@ -1,5 +1,6 @@
 package com.playtomic.tests.simulator.controllers;
 
+import com.playtomic.tests.common.enums.PayPalOrderState;
 import com.playtomic.tests.common.utils.UuidV7Generator;
 import com.playtomic.tests.simulator.configs.SimulatorProps;
 import com.playtomic.tests.simulator.models.SimulationResponses;
@@ -21,10 +22,10 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Semaphore;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 
-import static com.playtomic.tests.simulator.observability.SimulationOutcome.*;
+import static com.playtomic.tests.simulator.enums.SimulationOutcome.*;
 
 /** Inbound adapter for the local PayPal Orders fixture. */
 @RestController
@@ -64,7 +65,7 @@ public class PayPalSimulationController {
 
         String id = UuidV7Generator.generate().toString();
         orders.put(id, new Order(decimal.setScale(2).toPlainString()));
-        return ORDER_CREATED.record(ResponseEntity.status(HttpStatus.CREATED).body(Map.of("id", id, "status", "APPROVED")));
+        return ORDER_CREATED.record(ResponseEntity.status(HttpStatus.CREATED).body(Map.of("id", id, "status", PayPalOrderState.APPROVED.wireValue())));
     }
 
     /** Simulates capture of the identified PayPal order. */
@@ -82,14 +83,14 @@ public class PayPalSimulationController {
     }
 
     private static ResponseEntity<Map<String, ?>> complete(String orderId, Order order) {
-        if (!order.captured.compareAndSet(false, true)) {
+        if (!order.state.compareAndSet(PayPalOrderState.APPROVED, PayPalOrderState.COMPLETED)) {
             return CAPTURE_REPLAY.record(captureError("ORDER_ALREADY_CAPTURED"));
         }
-        var capture = Map.of("id", UuidV7Generator.generate().toString(), "status", "COMPLETED",
+        var capture = Map.of("id", UuidV7Generator.generate().toString(), "status", PayPalOrderState.COMPLETED.wireValue(),
                 "amount", Map.of("currency_code", CURRENCY, "value", order.amount));
         var unit = Map.of("payments", Map.of("captures", List.of(capture)));
         return CAPTURED.record(ResponseEntity.status(HttpStatus.CREATED)
-                .body(Map.of("id", orderId, "status", "COMPLETED", "purchase_units", List.of(unit))));
+                .body(Map.of("id", orderId, "status", PayPalOrderState.COMPLETED.wireValue(), "purchase_units", List.of(unit))));
     }
 
     private static ResponseEntity<Map<String, ?>> error(HttpStatus status, String name) {
@@ -104,6 +105,6 @@ public class PayPalSimulationController {
     @RequiredArgsConstructor
     private static class Order {
         private final String amount;
-        private final AtomicBoolean captured = new AtomicBoolean();
+        private final AtomicReference<PayPalOrderState> state = new AtomicReference<>(PayPalOrderState.APPROVED);
     }
 }

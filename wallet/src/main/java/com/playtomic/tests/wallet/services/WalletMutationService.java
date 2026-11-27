@@ -1,10 +1,12 @@
 package com.playtomic.tests.wallet.services;
 
+import com.playtomic.tests.common.contracts.StripeChargeEvidence;
 import com.playtomic.tests.common.contracts.StripeSimulatorMoney;
 import com.playtomic.tests.common.models.Error;
 import com.playtomic.tests.common.models.Outcome;
 import com.playtomic.tests.common.resilience.ReactiveCircuitBreaker;
 import com.playtomic.tests.common.utils.ExceptionNormalizer;
+import com.playtomic.tests.common.utils.UuidV7Generator;
 import com.playtomic.tests.wallet.enums.WalletOperationType;
 import com.playtomic.tests.wallet.exceptions.WalletMutationException;
 import com.playtomic.tests.wallet.http.stripe.StripeAmountTooSmallException;
@@ -125,6 +127,7 @@ public class WalletMutationService {
         return walletPaymentCircuitBreaker.protect(metrics.charge(Mono.defer(() -> {
                     DISPATCH.operation(id).log();
                     return paymentProviders.charge(operation.getProvider(), new CardChargeModel(card, operation.getAmount()))
+                            .contextWrite(context -> context.put(StripeChargeEvidence.REFERENCE_HEADER, operation.getProviderReference()))
                             .doOnCancel(() -> CANCELLED.operation(id).log());
                 })))
                 .materialize().flatMap(signal -> {
@@ -171,7 +174,8 @@ public class WalletMutationService {
             throw invalid("Wallet ID, idempotency key, currency and positive amount are required");
         }
         return new WalletOperationModel(operationId(walletId, key), walletId, type, amount, currency,
-                WALLET_OPERATION_STATUS_PENDING, null, Instant.now(), provider);
+                WALLET_OPERATION_STATUS_PENDING, null, Instant.now(), provider)
+                .setProviderReference(type == WALLET_OPERATION_TYPE_TOP_UP ? UuidV7Generator.generate().toString() : null);
     }
 
     private static String operationId(String walletId, String key) {

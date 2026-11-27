@@ -15,6 +15,7 @@ PROJECT = 'wallet-check-' + uuid.uuid4().hex[:12]
 MONGO = 'mongo:8.3.17-noble'
 SEEDS = ','.join(f'mongo-{i}:27017' for i in range(1, 4))
 URI = f'mongodb://{SEEDS}/playtomic?replicaSet=wallet-rs&w=majority'
+PROVIDER_URI = f'mongodb://{SEEDS}/simulator?replicaSet=wallet-rs&w=majority&readConcernLevel=majority'
 BASE = '/api/v1/wallets/'
 
 
@@ -60,7 +61,7 @@ def check(ha, directory):
         return start(name, '--network', 'container:'+anchor, '-v', f'{ROOT/module/"target"/jar}:/app.jar:ro', 'eclipse-temurin:25-jre-noble', 'java', '-XX:ActiveProcessorCount=2', '-Xmx384m', '-jar', '/app.jar', *args)
 
     def simulator(name, scenario):
-        cid = launch(name, 'simulator', 'payment-simulator-0.0.3.jar', '--server.address=127.0.0.1', '--payment-simulator.scenario='+scenario)
+        cid = launch(name, 'simulator', 'payment-simulator-0.0.3.jar', '--server.address=127.0.0.1', '--spring.mongodb.uri='+PROVIDER_URI, '--payment-simulator.scenario='+scenario)
         wait(lambda: http(9999, '/actuator/health')[0] in (200,404))
         return cid
 
@@ -173,6 +174,32 @@ def check(ha, directory):
             status, body = post('declined'); assert status==200 and body['result']['status']=='payment_rejected'
         assert balance('declined')==10; evidence('declined',reject,1,0)
         print('Provider 422 and replay: one decline, no posting or credit',flush=True)
+        if not ha:  # Start the worker only after replacing the provider process.
+            run('docker','rm','-f',reject); owned.remove(reject)
+            timeout = simulator('timeout','TIMEOUT'); seed('lost')
+            status, body = post('lost')
+            assert status == 202 and body['result']['status'] == 'review_required'
+            ref = str(uuid.UUID(js('db.wallet_operations.findOne({walletId:"lost"}).providerReference')))
+            assert balance('lost') == 10
+            run('docker','rm','-f',timeout); owned.remove(timeout)
+            replacement = simulator('replacement','REJECT')
+            path = '/v1/stripe-simulator/charges'
+            status, saved = http(9999, path+'/'+ref)
+            assert status == 200 and saved['status'] == 'ACCEPTED' and saved['reference'] == ref
+            assert saved['amount'] == Decimal('5.25') and saved['currency'] == 'EUR' and saved['receiptId']
+            assert js(f'db.stripe_charges.countDocuments({{_id:"{ref}",status:{{$type:"int",$eq:1}},amount:{{$type:"decimal"}}}})', PROVIDER_URI) == '1'
+            launch('reconciler','wallet','exercise-wallet-0.0.3.jar','--spring.profiles.active=local-top-up','--server.port=8091','--spring.mongodb.uri='+URI,'--wallet.reconciliation.enabled=true','--wallet.reconciliation.interval=1s','--wallet.reconciliation.receipt-delay=1s')
+            wait(lambda: balance('lost') == Decimal('15.25'))
+            assert post('lost')[1]['result']['status'] == 'succeeded'
+            evidence('lost',replacement,0)
+            # Probe provider replay separately, after proving the worker never POSTed.
+            def repeat_charge(amount):
+                opts = {'method':'POST','headers':{'Content-Type':'application/json','X-Charge-Reference':ref},'body':json.dumps({'credit_card':'4242424242424242','amount':amount})}
+                return json.loads(js(f'(async()=>{{const r=await fetch("http://127.0.0.1:9999{path}",{json.dumps(opts)});print(JSON.stringify([r.status,await r.text()]))}})()', '--nodb'))
+            status, body = repeat_charge(5.25)
+            assert status == 200 and json.loads(body)['id'] == saved['receiptId']
+            assert repeat_charge(6)[0] == 409 and http(9999,path+'/'+ref)[1] == saved
+            print('Lost receipt recovered after provider replacement: original decision, one credit, no redispatch',flush=True)
     finally:
         for cid in reversed(owned):
             run('docker','rm','-fv',cid,check=False)

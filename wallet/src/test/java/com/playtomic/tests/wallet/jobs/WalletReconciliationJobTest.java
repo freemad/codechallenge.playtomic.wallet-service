@@ -1,10 +1,13 @@
 package com.playtomic.tests.wallet.jobs;
 
+import com.playtomic.tests.common.contracts.StripeChargeEvidence;
 import com.playtomic.tests.common.enums.CommonErrorCode;
+import com.playtomic.tests.common.enums.StripeChargeStatus;
 import com.playtomic.tests.common.exceptions.BusinessException;
 import com.playtomic.tests.wallet.configs.WalletReconciliationProps;
 import com.playtomic.tests.wallet.models.WalletOperationModel;
 import com.playtomic.tests.wallet.services.WalletOperationService;
+import com.playtomic.tests.wallet.services.client.StripeClient;
 import com.playtomic.tests.wallet.services.entity.WalletJobLeaseEntityService;
 import com.playtomic.tests.wallet.services.entity.WalletOperationEntityService;
 import org.junit.jupiter.api.Test;
@@ -19,6 +22,8 @@ import java.util.concurrent.CompletionException;
 
 import static com.playtomic.tests.wallet.enums.WalletOperationStatus.WALLET_OPERATION_STATUS_PENDING;
 import static com.playtomic.tests.wallet.enums.WalletOperationStatus.WALLET_OPERATION_STATUS_RECEIPT_RECORDED;
+import static com.playtomic.tests.wallet.enums.WalletOperationStatus.WALLET_OPERATION_STATUS_REVIEW_REQUIRED;
+import static com.playtomic.tests.wallet.enums.WalletOperationStatus.WALLET_OPERATION_STATUS_PAYMENT_REJECTED;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -40,7 +45,13 @@ class WalletReconciliationJobTest {
     private final WalletOperationService paymentCommands = mock(WalletOperationService.class);
     private final WalletOperationEntityService operations = mock(WalletOperationEntityService.class);
     private final WalletJobLeaseEntityService leases = mock(WalletJobLeaseEntityService.class);
-    private final WalletReconciliationJob job = new WalletReconciliationJob(paymentCommands, operations, leases, SETTINGS);
+    private final StripeClient stripe = mock(StripeClient.class);
+    private final WalletReconciliationJob job = new WalletReconciliationJob(paymentCommands, operations, leases, SETTINGS, stripe);
+
+    @org.junit.jupiter.api.BeforeEach
+    void emptyReviewBatch() {
+        when(operations.reconciliationBatch(eq(WALLET_OPERATION_STATUS_REVIEW_REQUIRED), any(), anyInt())).thenReturn(Flux.empty());
+    }
 
     @Test
     void skipsWorkWhenTheLeaseIsHeldElsewhere() {
@@ -143,5 +154,34 @@ class WalletReconciliationJobTest {
                 !cutoff.isBefore(start.minus(SETTINGS.getReceiptDelay()))
                         && !cutoff.isAfter(end.minus(SETTINGS.getReceiptDelay()))), eq(SETTINGS.getBatchSize()));
         verify(leases).release(JOB, token);
+    }
+
+    @Test
+    void reconcilesTerminalEvidenceAndDefersMissingEvidenceWithoutDispatch() {
+        var operation = mock(WalletOperationModel.class);
+        var reference = java.util.UUID.randomUUID();
+        when(operation.getId()).thenReturn("op");
+        when(operation.getProvider()).thenReturn("stripe");
+        when(operation.getProviderReference()).thenReturn(reference.toString());
+        when(operation.getAmount()).thenReturn(java.math.BigDecimal.ONE);
+        when(operation.getCurrency()).thenReturn("EUR");
+        when(leases.acquire(JOB, SETTINGS.getLease())).thenReturn(Mono.just("lease"));
+        when(leases.release(JOB, "lease")).thenReturn(Mono.empty());
+        when(operations.ensureReconciliationIndex()).thenReturn(Mono.just("index"));
+        when(operations.reconciliationBatch(any(), any(), anyInt())).thenReturn(Flux.empty());
+        when(operations.reconciliationBatch(eq(WALLET_OPERATION_STATUS_REVIEW_REQUIRED), any(), anyInt())).thenReturn(Flux.just(operation));
+        when(stripe.lookup(reference)).thenReturn(Mono.empty(),
+                Mono.just(new StripeChargeEvidence(reference, StripeChargeStatus.DECLINED, null, java.math.BigDecimal.TEN, "EUR")),
+                Mono.just(new StripeChargeEvidence(reference, StripeChargeStatus.ACCEPTED, "receipt", java.math.BigDecimal.ONE, "EUR")),
+                Mono.just(new StripeChargeEvidence(reference, StripeChargeStatus.DECLINED, null, java.math.BigDecimal.ONE, "EUR")));
+        when(operations.deferReview(operation)).thenReturn(Mono.empty());
+        when(paymentCommands.recordReceipt("op", "receipt")).thenReturn(Mono.just(com.playtomic.tests.common.models.Outcome.success(java.util.Optional.of(operation))));
+        when(operations.transitionTopUp("op", WALLET_OPERATION_STATUS_PAYMENT_REJECTED, WALLET_OPERATION_STATUS_REVIEW_REQUIRED)).thenReturn(Mono.just(operation));
+        StepVerifier.create(job.reconcile().repeat(3)).expectComplete().verify(DEADLINE);
+        verify(operations, org.mockito.Mockito.times(2)).deferReview(operation);
+        verify(paymentCommands).recordReceipt("op", "receipt");
+        verify(operations).transitionTopUp("op", WALLET_OPERATION_STATUS_PAYMENT_REJECTED, WALLET_OPERATION_STATUS_REVIEW_REQUIRED);
+        verify(stripe, org.mockito.Mockito.times(4)).lookup(reference);
+        verifyNoMoreInteractions(stripe);
     }
 }

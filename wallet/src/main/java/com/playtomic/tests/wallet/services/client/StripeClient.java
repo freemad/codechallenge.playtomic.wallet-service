@@ -1,5 +1,6 @@
 package com.playtomic.tests.wallet.services.client;
 
+import com.playtomic.tests.common.contracts.StripeChargeEvidence;
 import com.playtomic.tests.common.utils.ExceptionNormalizer;
 import com.playtomic.tests.wallet.configs.WalletPaymentProviderProps;
 import com.playtomic.tests.wallet.dtos.StripeDtos.ChargeReceiptDto;
@@ -16,6 +17,7 @@ import org.springframework.web.reactive.function.client.WebClientException;
 import org.springframework.web.util.UriComponentsBuilder;
 import reactor.core.publisher.Mono;
 
+import java.util.UUID;
 import java.util.concurrent.TimeoutException;
 
 /** Calls the configured charge and refund endpoints and interprets Stripe responses. */
@@ -32,8 +34,11 @@ public class StripeClient {
 
     /** Submits the charge; a confirmed HTTP 422 rejection is distinct from an uncertain transport failure. */
     public Mono<ChargeReceiptDto> charge(ChargeRequestDto request) {
-        return Mono.defer(() -> webClient.post()
+        return Mono.deferContextual(context -> webClient.post()
                         .uri(settings.getChargesUri())
+                        .headers(headers -> context.<String>getOrEmpty(StripeChargeEvidence.REFERENCE_HEADER)
+                                .filter(ignored -> supportsFixtureEvidence())
+                                .ifPresent(reference -> headers.set(StripeChargeEvidence.REFERENCE_HEADER, reference)))
                         .bodyValue(request)
                         .retrieve()
                         .onStatus(HttpStatus.UNPROCESSABLE_CONTENT::equals,
@@ -56,6 +61,24 @@ public class StripeClient {
                 .transform(this::withRequestTimeout);
     }
 
+    private boolean supportsFixtureEvidence() {
+        var uri = settings.getChargesUri();
+        return "http".equals(uri.getScheme()) && uri.getRawUserInfo() == null && uri.getRawQuery() == null
+                && uri.getRawFragment() == null && ("127.0.0.1".equals(uri.getHost()) || "simulator".equals(uri.getHost()));
+    }
+
+    /** Queries the recorded charge without repeating the payment. */
+    public Mono<StripeChargeEvidence> lookup(UUID reference) {
+        if (!supportsFixtureEvidence()) return Mono.empty();
+        return Mono.defer(() -> webClient.get().uri(UriComponentsBuilder.fromUri(settings.getChargesUri())
+                        .pathSegment(reference.toString()).build().toUri())
+                .exchangeToMono(response -> {
+                    if (response.statusCode().equals(HttpStatus.NOT_FOUND)) return Mono.empty();
+                    if (!response.statusCode().equals(HttpStatus.OK)) return response.createError();
+                    return response.bodyToMono(StripeChargeEvidence.class);
+                })).filter(evidence -> reference.equals(evidence.reference())).transform(this::withRequestTimeout);
+    }
+
     private <T> Mono<T> withRequestTimeout(Mono<T> request) {
         return request.timeout(settings.getRequestTimeout())
                 .onErrorMap(StripeClient::isUnconfirmedTransportFailure,
@@ -68,4 +91,3 @@ public class StripeClient {
                 && !ExceptionNormalizer.isControlFlow(error) && !ExceptionNormalizer.isFatal(error);
     }
 }
-
