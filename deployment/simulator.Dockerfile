@@ -13,4 +13,3 @@ COPY --from=build /build/simulator/target/*.jar simulator.jar
 USER 10001
 EXPOSE 9999
 ENTRYPOINT ["java", "-jar", "simulator.jar"]
-

@@ -2,6 +2,7 @@ package com.playtomic.tests.wallet.models;
 
 import com.playtomic.tests.common.contracts.models.IModel;
 import lombok.Value;
+import lombok.RequiredArgsConstructor;
 import lombok.experimental.Accessors;
 
 import java.io.Serial;
@@ -17,6 +18,7 @@ import static com.playtomic.tests.wallet.enums.WalletOperationType.WALLET_OPERAT
 
 /** Represents the request identity, state and result used to replay a wallet mutation. */
 @Value
+@RequiredArgsConstructor
 @Accessors(chain = true)
 public class WalletOperationModel implements IModel {
     @Serial
@@ -31,6 +33,9 @@ public class WalletOperationModel implements IModel {
     BigDecimal resultingBalance;
     Instant updatedAt;
     String provider;
+    @lombok.experimental.NonFinal
+    @lombok.Setter
+    String providerReference;
 
     /** Returns the provider identifier, defaulting legacy top-ups without a provider to Stripe. */
     public String getProvider() {

@@ -83,6 +83,8 @@ Use only an authorized, explicitly named database. Base Compose has **no Kafka b
 
 ## Accepted charge with a missing receipt
 
+With `WALLET_RECONCILIATION_ENABLED=true`, the worker first checks the local Stripe simulator using the reference saved before dispatch. A matching acceptance records the receipt for settlement; a confirmed decline closes the operation without a credit. If the lookup fails, returns no evidence, or the operation predates references, it stays in review. Use the manual procedure below only when automatic lookup cannot resolve it.
+
 Do not repeat the charge. A timeout or `review_required` is not evidence of acceptance or rejection. Obtain an authoritative provider record **uniquely linking this operation to this payment**, including provider receipt, amount and currency. A matching amount and timestamp are insufficient. If the provider cannot establish the link, leave the operation in review.
 
 For a confirmed acceptance, retain the evidence and reviewer approval in a restricted case. On the intended wallet replica set, an authorized operator can set `OPERATION_ID`, `PROVIDER_RECEIPT`, `WALLET_ID`, `VERIFIED_AMOUNT`, `VERIFIED_CURRENCY` and `CASE_REFERENCE` from that case, then run `mongosh "$WALLET_MONGO_URI" --file deployment/record-confirmed-charge.js` (the URI must select the wallet database). Use an opaque case reference, never card data. The script accepts a Stripe top-up in review and atomically records its receipt; it does not move money. A stale pending payment must first enter review through reconciliation. On conflict, stop and investigate. After an uncertain commit read back the receipt and operation before proceeding.

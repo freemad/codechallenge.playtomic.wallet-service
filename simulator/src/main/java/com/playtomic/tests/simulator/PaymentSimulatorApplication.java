@@ -2,7 +2,7 @@ package com.playtomic.tests.simulator;
 
 import com.playtomic.tests.common.configs.ObservabilityConfiguration;
 import com.playtomic.tests.common.observability.StructuredEvents;
-import com.playtomic.tests.simulator.observability.SimulationOutcome;
+import com.playtomic.tests.simulator.enums.SimulationOutcome;
 import com.playtomic.tests.simulator.configs.SimulatorProps;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

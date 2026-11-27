@@ -1,5 +1,6 @@
 package com.playtomic.tests.wallet.services.adapter;
 
+import com.playtomic.tests.common.enums.PayPalOrderState;
 import com.playtomic.tests.common.utils.ExceptionNormalizer;
 import com.playtomic.tests.wallet.dtos.FixtureWire.Amount;
 import com.playtomic.tests.wallet.dtos.FixtureWire.Create;
@@ -39,7 +40,7 @@ public final class PayPalAdapter {
             var request = new Create("CAPTURE", List.of(new Unit(new Amount(CURRENCY, value))));
             return client.create(request).map(body -> {
                 String id = body.id();
-                if (!ID.matcher(id).matches() || !"APPROVED".equals(body.status())) {
+                if (!ID.matcher(id).matches() || !PayPalOrderState.APPROVED.wireValue().equals(body.status())) {
                     throw new IllegalStateException("Invalid PayPal order response");
                 }
                 return new Order(id, value);
@@ -60,8 +61,8 @@ public final class PayPalAdapter {
                 throw new IllegalStateException("PayPal capture could not be confirmed");
             }
             String id = response.captureId();
-            if (!order.id.equals(response.orderId()) || !"COMPLETED".equals(response.status())
-                    || !ID.matcher(id).matches() || order.id.equals(id) || !"COMPLETED".equals(response.captureStatus())
+            if (!order.id.equals(response.orderId()) || !PayPalOrderState.COMPLETED.wireValue().equals(response.status())
+                    || !ID.matcher(id).matches() || order.id.equals(id) || !PayPalOrderState.COMPLETED.wireValue().equals(response.captureStatus())
                     || !CURRENCY.equals(response.amount().currency()) || !order.amount.equals(response.amount().value())) {
                 throw new IllegalStateException("Invalid PayPal capture receipt");
             }

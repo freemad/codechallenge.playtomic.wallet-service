@@ -1,4 +1,4 @@
-package com.playtomic.tests.simulator.observability;
+package com.playtomic.tests.simulator.enums;
 
 import com.playtomic.tests.common.observability.StructuredEvents;
 import lombok.RequiredArgsConstructor;

@@ -3,6 +3,7 @@ package com.playtomic.tests.simulator;
 import com.playtomic.tests.simulator.configs.SimulatorProps;
 import com.playtomic.tests.simulator.controllers.PayPalSimulationController;
 import com.playtomic.tests.simulator.controllers.RedsysSimulationController;
+import com.playtomic.tests.simulator.enums.SimulationScenario;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.web.server.context.WebServerApplicationContext;
@@ -100,7 +101,7 @@ class AdditionalProviderSimulationTest {
 
     @Test
     void bothPaymentEndpointsDelayBeforeTimingOut() {
-        var properties = new SimulatorProps(SimulatorProps.Scenario.TIMEOUT);
+        var properties = new SimulatorProps(SimulationScenario.TIMEOUT);
         var paypal = new PayPalSimulationController(properties);
         var order = paypal.create(JSON.readTree(ORDER));
         String id = (String) Objects.requireNonNull(order.getBody()).get("id");
