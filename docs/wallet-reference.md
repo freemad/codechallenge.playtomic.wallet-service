@@ -110,10 +110,12 @@ Inspect `result.status`, not just the HTTP status or envelope `success` flag:
 
 | HTTP status | Meaning |
 | --- | --- |
-| `200` | Recorded result: `succeeded`, `payment_rejected`, or `provider_unavailable`. Only `succeeded` includes `resultingBalance`. |
+| `200` | `succeeded`; `resultingBalance` is the balance after the credit. |
 | `202` | Unresolved: `pending`, `receipt_recorded`, or `review_required`. This does not confirm credit. |
 | `400` / `404` | Invalid request (including currency mismatch or a provider not enabled for a new top-up) / wallet not found. |
 | `409` | The same wallet/key already identifies a different amount, currency, operation type, or provider. |
+| `422` | `payment_rejected`; confirmed decline, no credit. Same-key replay returns the same rejection. |
+| `503` | `provider_unavailable`; no credit. Same-key replay returns the recorded operation. |
 | `500` | Unexpected failure; internal details are not returned. |
 
 For example, given the wallet HTTP `status` and response `body` bytes:
@@ -127,8 +129,8 @@ result = reply.get("result") or {}
 state = result.get("status")
 if status == 200 and state == "succeeded":
     print("Credited; balance after this operation:", result["resultingBalance"])
-elif status == 200 and state in ("payment_rejected", "provider_unavailable"):
-    print("Not credited:", state)  # A provider 422 is a recorded rejection here.
+elif (status, state) in ((422, "payment_rejected"), (503, "provider_unavailable")):
+    print("Not credited:", state)
 elif status == 202 and state in ("pending", "receipt_recorded", "review_required"):
     print("Unresolved:", state)  # review_required needs evidence, not a new charge.
 else:

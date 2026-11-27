@@ -22,13 +22,7 @@ import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
@@ -36,7 +30,9 @@ import reactor.core.publisher.Mono;
 import static com.playtomic.tests.common.constants.HttpParam.HEADER_IDEMPOTENCY_KEY;
 import static com.playtomic.tests.wallet.controllers.WalletHttpResponses.toResponse;
 
-/** Exposes wallet lookup and the opt-in local top-up handlers. */
+/**
+ * Exposes wallet lookup and the opt-in local top-up handlers.
+ */
 @RestController
 @RequestMapping("/api/v1/wallets")
 @RequiredArgsConstructor
@@ -52,7 +48,9 @@ public class WalletControllerV1 {
     private static final String PAYMENT_PROVIDERS_SEGMENT = "payment-providers";
     private static final String WALLET_PATH = "/{id:(?!(?:log|" + PAYMENT_PROVIDERS_SEGMENT + ")\\z)[\\s\\S]+}";
 
-    /** Returns a timestamp in the response envelope for a smoke check. */
+    /**
+     * Returns a timestamp in the response envelope for a smoke check.
+     */
     @GetMapping("/log")
     public Mono<ResponseEntity<ResponseDtoV1>> log() {
         return Mono.fromCallable(() -> toResponse(new StringDtoV1().setString(String.valueOf(System.currentTimeMillis())),
@@ -60,28 +58,35 @@ public class WalletControllerV1 {
     }
 
     // Reserve the discovery path even when its handler is not registered.
-    /** Looks up the wallet by identifier and returns its result or mapped error in the HTTP envelope. */
+
+    /**
+     * Looks up the wallet by identifier and returns its result or mapped error in the HTTP envelope.
+     */
     @GetMapping(WALLET_PATH)
     public Mono<ResponseEntity<ResponseDtoV1>> getWallet(@PathVariable("id") String id, ServerWebExchange exchange) {
         return walletService.findById(id).map(outcome -> toResponse(outcome, exchange.getRequest().getId(),
                 walletResponseMapper::toDto, lookupStatus(outcome), CacheControl.noStore()));
     }
 
-    /** Lists configured top-up providers without probing availability or charging a card. */
+    /**
+     * Lists configured top-up providers without probing availability or charging a card.
+     */
     @LocalTopUpRoute
     @GetMapping(path = "/" + PAYMENT_PROVIDERS_SEGMENT, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<ResponseDtoV1> getPaymentProviders() {
         return toResponse(new WalletPaymentProvidersResponseDtoV1(paymentProviders.activeIds()), CacheControl.noStore());
     }
 
-    /** Handles a local-demo card top-up; requires the configured synthetic card and exactly one nonblank idempotency key. */
+    /**
+     * Handles a local-demo card top-up; requires the configured synthetic card and exactly one nonblank idempotency key.
+     */
     @LocalTopUpRoute
     @PostMapping(path = WALLET_PATH + "/top-ups", consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
     public Mono<ResponseEntity<ResponseDtoV1>> topUp(@PathVariable("id") String id,
-                                                    @RequestHeader(HEADER_IDEMPOTENCY_KEY) String key,
-                                                    @RequestBody WalletTopUpRequestDtoV1 request,
-                                                    ServerWebExchange exchange) {
+                                                     @RequestHeader(HEADER_IDEMPOTENCY_KEY) String key,
+                                                     @RequestBody WalletTopUpRequestDtoV1 request,
+                                                     ServerWebExchange exchange) {
         String correlationId = exchange.getRequest().getId();
         var keys = exchange.getRequest().getHeaders().get(HEADER_IDEMPOTENCY_KEY);
         if (keys == null || keys.size() != 1 || key.isBlank()) {
@@ -108,16 +113,20 @@ public class WalletControllerV1 {
     private static HttpStatus topUpStatus(Outcome<WalletOperationModel, Error> outcome) {
         if (!outcome.isFailure()) {
             return switch (outcome.getResponse().getStatus()) {
-                case WALLET_OPERATION_STATUS_SUCCEEDED, WALLET_OPERATION_STATUS_PAYMENT_REJECTED,
-                     WALLET_OPERATION_STATUS_PROVIDER_UNAVAILABLE -> HttpStatus.OK;
-                case WALLET_OPERATION_STATUS_PENDING, WALLET_OPERATION_STATUS_REVIEW_REQUIRED,
+                case WALLET_OPERATION_STATUS_SUCCEEDED -> HttpStatus.OK;
+                case WALLET_OPERATION_STATUS_PAYMENT_REJECTED -> HttpStatus.UNPROCESSABLE_CONTENT;
+                case WALLET_OPERATION_STATUS_PROVIDER_UNAVAILABLE -> HttpStatus.SERVICE_UNAVAILABLE;
+                case WALLET_OPERATION_STATUS_PENDING,
+                     WALLET_OPERATION_STATUS_REVIEW_REQUIRED,
                      WALLET_OPERATION_STATUS_RECEIPT_RECORDED -> HttpStatus.ACCEPTED;
                 default -> throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR);
             };
         }
         if (outcome.getError().getCode() instanceof WalletErrorCode code) {
             return switch (code) {
-                case INVALID_WALLET_ID, INVALID_REQUEST, CURRENCY_MISMATCH -> HttpStatus.BAD_REQUEST;
+                case INVALID_WALLET_ID,
+                     INVALID_REQUEST,
+                     CURRENCY_MISMATCH -> HttpStatus.BAD_REQUEST;
                 case WALLET_NOT_FOUND -> HttpStatus.NOT_FOUND;
                 case IDEMPOTENCY_CONFLICT -> HttpStatus.CONFLICT;
                 default -> HttpStatus.INTERNAL_SERVER_ERROR;

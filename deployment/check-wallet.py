@@ -171,7 +171,7 @@ def check(ha, directory):
         if ha:
             wallet('wallet-c',8090)
         for _ in range(2):
-            status, body = post('declined'); assert status==200 and body['result']['status']=='payment_rejected'
+            status, body = post('declined'); assert status==422 and body['result']['status']=='payment_rejected'
         assert balance('declined')==10; evidence('declined',reject,1,0)
         print('Provider 422 and replay: one decline, no posting or credit',flush=True)
         if not ha:  # Start the worker only after replacing the provider process.

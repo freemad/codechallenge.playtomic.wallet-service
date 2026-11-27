@@ -7,15 +7,20 @@ import com.playtomic.tests.common.models.Outcome;
 import com.playtomic.tests.wallet.configs.WalletTopUpHttpProps;
 import com.playtomic.tests.wallet.dtos.WalletTopUpRequestDtoV1;
 import com.playtomic.tests.wallet.enums.WalletErrorCode;
+import com.playtomic.tests.wallet.enums.WalletOperationStatus;
+import com.playtomic.tests.wallet.enums.WalletOperationType;
 import com.playtomic.tests.wallet.mappers.WalletResponseMapperV1;
 import com.playtomic.tests.wallet.mappers.WalletTopUpResponseMapperV1;
 import com.playtomic.tests.wallet.models.WalletModel;
+import com.playtomic.tests.wallet.models.WalletOperationModel;
 import com.playtomic.tests.wallet.services.WalletLookupService;
 import com.playtomic.tests.wallet.services.WalletMutationService;
 import com.playtomic.tests.wallet.services.WalletOutcomeHandler;
 import com.playtomic.tests.wallet.services.WalletTopUpProviders;
 import com.playtomic.tests.wallet.services.entity.WalletEntityService;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mapstruct.factory.Mappers;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -29,6 +34,7 @@ import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.Map;
 import java.util.Set;
 
@@ -119,6 +125,36 @@ class WalletControllerV1Test {
                 .expectBody()
                 .jsonPath("$.success").isEqualTo(false)
                 .jsonPath("$.error.message").isEqualTo("Internal Server Error");
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "WALLET_OPERATION_STATUS_PAYMENT_REJECTED,422,payment_rejected",
+            "WALLET_OPERATION_STATUS_PROVIDER_UNAVAILABLE,503,provider_unavailable",
+            "WALLET_OPERATION_STATUS_INSUFFICIENT_FUNDS,500,invalid"
+    })
+    void doesNotReportCreditForAnUnsuccessfulTopUp(WalletOperationStatus status, int httpStatus, String wireStatus) {
+        var mutations = mock(WalletMutationService.class);
+        var card = "4242424242424242";
+        var controller = new WalletControllerV1(lookup, mapper, mutations,
+                Mappers.getMapper(WalletTopUpResponseMapperV1.class), new WalletTopUpProviders(Map.of()),
+                new WalletTopUpHttpProps(true, card));
+        var operation = new WalletOperationModel("op", "wallet-1", WalletOperationType.WALLET_OPERATION_TYPE_TOP_UP,
+                BigDecimal.ONE, "EUR", status, null, Instant.EPOCH, "stripe");
+        when(mutations.topUp("wallet-1", "key", BigDecimal.ONE, "EUR", "stripe", card))
+                .thenReturn(Mono.just(Outcome.success(operation)));
+        var body = WebTestClient.bindToController(controller).controllerAdvice(new CommonExceptionHandler()).build()
+                .post().uri("/api/v1/wallets/wallet-1/top-ups").header(HEADER_IDEMPOTENCY_KEY, "key")
+                .contentType(MediaType.APPLICATION_JSON).bodyValue(Map.of("amount", 1, "currency", "EUR",
+                        "provider", "stripe", "creditCardNumber", card)).exchange()
+                .expectStatus().isEqualTo(httpStatus).expectBody();
+        if (httpStatus == 500) {
+            body.jsonPath("$.success").isEqualTo(false).jsonPath("$.result").doesNotExist()
+                    .jsonPath("$.error.message").isEqualTo("Internal Server Error");
+        } else {
+            body.jsonPath("$.success").isEqualTo(true).jsonPath("$.result.status").isEqualTo(wireStatus)
+                    .jsonPath("$.result.resultingBalance").doesNotHaveJsonPath();
+        }
     }
 
     @Test
