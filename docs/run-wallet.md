@@ -12,11 +12,13 @@ Requires Python 3 (assertions enabled) and Docker Compose; no separate build, da
 
 ## 2. Prove recovery after process death or a primary election
 
+The default checker above also tests a **missing receipt**: the fixture accepts €5.25 in `TIMEOUT`, the wallet returns `202 review_required`, and the checker replaces the simulator with one in `REJECT` using the same provider database. The worker must recover the original acceptance by GET, producing one credit and no charge to the replacement. Only after checking that does the script probe provider POST replay and conflict separately.
+
 ```sh
 python3 deployment/check-wallet.py --ha
 ```
 
-Use a recent Docker Compose supporting `!reset`. This runs the baseline and then interrupts **local settlement after receipt persistence** in a disposable replica set. On process death or primary step-down, same-key replay must settle once. A separate case kills the serving wallet and lets a reconciliation worker settle without client replay. Each must leave €15.25, one charge and one posting. The checker also reruns initialization with one member stopped. No manual cleanup normally needed. Do not reproduce these failpoints on a shared database. This is not evidence of recovery when a receipt never arrived.
+Use a recent Docker Compose supporting `!reset`. `--ha` runs the common payment checks but skips simulator replacement. It interrupts **local settlement after receipt persistence** in a disposable replica set. On process death or primary step-down, same-key replay must settle once. A separate case kills the serving wallet and lets a reconciliation worker settle without client replay. Each must leave €15.25, one charge and one posting. The checker also reruns initialization with one member stopped. Do not reproduce these failpoints on a shared database.
 
 ## 3. Start, inspect and stop the default stack
 
@@ -43,8 +45,10 @@ First follow [interactive host setup](wallet-reference.md#try-a-local-top-up): s
 | Conflicting reuse | Repeat the successful POST with the same key but amount `5.26` | 409; original operation unchanged. |
 | Invalid input / missing wallet | Omit the key, use a fresh key with USD on the EUR wallet, or submit a valid POST to an unknown ID | 400 for invalid input/currency; 404 for the absent wallet. No charge. |
 | Confirmed decline | Restart **simulator only** with `--payment-simulator.scenario=REJECT`; POST with a fresh key, then replay it | Provider 422 becomes wallet 200 `payment_rejected`; wallet balance unchanged. |
-| Timeout | Restart simulator with `--payment-simulator.scenario=TIMEOUT`; POST with a fresh key and replay the same request | Unconfirmed, not a decline or a credit. Expect 202 unresolved; do not send another charge. The delayed 504 fixture does not prove provider acceptance. |
+| Lost Stripe reply | With the worker off, restart the local simulator with `--payment-simulator.scenario=TIMEOUT`, retaining its MongoDB. POST €5.25 with a fresh key. | Wallet returns `202 review_required`; balance is unchanged. The referenced fixture decision is `ACCEPTED`, but the wallet did not receive the receipt. |
 | Standalone provider protocols | Run [Stripe charge](wallet-reference.md#stripe-charges), [PayPal order and capture](wallet-reference.md#paypal-orders-and-capture) or [Redsys authorization](wallet-reference.md#redsys-rest-authorization) directly against the simulator | Fixture-specific HTTP and response codes are documented with each command. Direct requests do **not** credit a wallet. |
+
+To finish the lost-reply scenario, restart the **wallet** with the same demo settings and `WALLET_RECONCILIATION_ENABLED=true`. Keep both databases intact. Poll wallet lookup: expect one €5.25 increase after the worker records the matching receipt and settlement runs. Replay the original wallet request with the **same key** to see `succeeded`. Do not submit the charge directly to Stripe.
 
 Stop the foreground Java processes with Ctrl-C. Restart the simulator without the scenario argument to restore `SUCCESS`. For all HTTP result states, including `provider_unavailable`, see the [status table](wallet-reference.md#try-a-local-top-up).
 
@@ -76,7 +80,7 @@ Use only an authorized, explicitly named database. Base Compose has **no Kafka b
 
 | Task | Action and expected result |
 | --- | --- |
-| Enable receipt recovery in Compose | `WALLET_RECONCILIATION_ENABLED=true docker compose -f deployment/compose.yaml up -d wallet`. Recorded receipts become eligible for local settlement; stale pending operations are flagged, not charged. Recreate with the flag false to disable. |
+| Enable receipt recovery in Compose | `WALLET_RECONCILIATION_ENABLED=true docker compose -f deployment/compose.yaml up -d wallet`. The worker settles recorded receipts, flags stale pending operations for review, and looks up eligible reviewed Stripe operations. It never charges. Recreate with the flag false to disable. |
 | Enable the balance-event relay | Provision `wallet.events.v1` (or `WALLET_OUTBOX_TOPIC`) on a reachable broker. On a wallet **process**, set `SPRING_KAFKA_BOOTSTRAP_SERVERS` and `WALLET_OUTBOX_ENABLED=true`. If using Compose, explicitly pass the outbox flag via an override; base Compose does not forward it. Expect at-least-once events keyed by wallet ID. Use the relay IT above for a disposable demonstration. |
 | Enroll and audit a wallet | Follow [audit rollout and retention prerequisites](wallet-balance-audit.md#enroll-wallets-prospectively). With approved `AUDIT_WALLET_ID`, `AUDIT_CURRENCY` and `AUDIT_OPENING` exported and writers paused, run `mongosh "$WALLET_DB_URI" --file deployment/enroll-wallet-audit.js`. First cutoff is next 00:00 UTC. Agreement advances the schedule; investigate discrepancies, never edit ledger entries. |
 | Upgrade legacy enum storage | Back up and stop **all** old writers and workers, then follow [offline migration](wallet-reference.md#upgrading-existing-mongodb-data). Start new writers only after validation and conversion succeed. Fresh databases skip this step. |
@@ -89,6 +93,6 @@ Do not repeat the charge. A timeout or `review_required` is not evidence of acce
 
 For a confirmed acceptance, retain the evidence and reviewer approval in a restricted case. On the intended wallet replica set, an authorized operator can set `OPERATION_ID`, `PROVIDER_RECEIPT`, `WALLET_ID`, `VERIFIED_AMOUNT`, `VERIFIED_CURRENCY` and `CASE_REFERENCE` from that case, then run `mongosh "$WALLET_MONGO_URI" --file deployment/record-confirmed-charge.js` (the URI must select the wallet database). Use an opaque case reference, never card data. The script accepts a Stripe top-up in review and atomically records its receipt; it does not move money. A stale pending payment must first enter review through reconciliation. On conflict, stop and investigate. After an uncertain commit read back the receipt and operation before proceeding.
 
-Let the reconciliation worker apply the recorded receipt, or replay the original operation with the same key. Verify the operation is `succeeded`, its receipt belongs to that operation, and there is one matching credit posting and outbox event. Never edit the balance directly. The supplied simulator does not guarantee evidence lookup; this procedure does not make an unverifiable charge recoverable.
+Let the reconciliation worker apply the recorded receipt, or replay the original operation with the same key. Verify the operation is `succeeded`, its receipt belongs to that operation, and there is one matching credit posting and outbox event. Never edit the balance directly. The local lookup extension is not a guarantee about the hosted sandbox; without attributable evidence, leave the case unresolved.
 
 **Admission and rollout:** Top-ups reserve Decimal128 capacity against all unsettled credits, including those in review. This is a storage precision limit, not a production currency or minor-unit policy. Stop old mutation writers before deploying: they do not take the admission fence. The credit pressure test requires 40 provider calls, 40 credits, 40 postings, 40 credit events and a final balance of 40.

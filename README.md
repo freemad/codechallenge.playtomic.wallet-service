@@ -12,6 +12,8 @@ python3 deployment/check-wallet.py
 
 ![Two requests, one charge: €10 becomes €15.25 after a €5.25 top-up. Replaying the same key leaves €15.25, one provider charge and one ledger posting.](docs/top-up-replay.svg)
 
+![The local Stripe fixture accepts a €5.25 charge, but its reply is lost. The wallet stays at €10 until reconciliation retrieves the receipt by reference with GET. The balance reaches €15.25 without a second charge.](docs/provider-payment.svg)
+
 The checker builds both JARs, starts a private replica set, simulator and wallet, then acts as the HTTP client. No manual seed, running Compose stack, hosted payment service or real card is needed.
 
 | Given | When | Expected result |
@@ -19,8 +21,9 @@ The checker builds both JARs, starts a private replica set, simulator and wallet
 | A wallet holding €10 | GET the wallet, POST €5.25, repeat with the same key, then GET again | €15.25, **one** provider charge and **one** ledger posting |
 | A balance beyond JavaScript’s safe integer range | Credit one cent | The exact cent survives the HTTP round trip |
 | A provider that declines | POST and replay the same key | `payment_rejected` both times, one provider call, no posting, balance still €10 |
+| The local Stripe fixture accepts €5.25 but the wallet gets no receipt | Replace the simulator process, then start reconciliation | Initially `202 review_required` and €10; the worker looks up the saved reference and the wallet settles at €15.25 with one posting and no second charge. |
 
-A passing run exits zero and removes its containers and volumes. Add `--ha` to exercise process death, a MongoDB election and scheduled receipt recovery. **Ordinary Compose does not register the top-up route.** To assess both operations, use the checker above or the [interactive loopback demo](docs/wallet-reference.md#try-a-local-top-up).
+A passing run exits zero and removes its containers and volumes. Run the checker separately with `--ha` for process death, a MongoDB election and scheduled settlement **after the receipt is already in the wallet**; that mode skips the simulator-replacement case. **Ordinary Compose does not register the top-up route.** To assess both operations, use the checker above or the [interactive loopback demo](docs/wallet-reference.md#try-a-local-top-up).
 
 ## What is implemented?
 
