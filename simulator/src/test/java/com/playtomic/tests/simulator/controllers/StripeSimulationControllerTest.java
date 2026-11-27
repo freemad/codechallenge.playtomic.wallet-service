@@ -1,10 +1,16 @@
 package com.playtomic.tests.simulator.controllers;
 
+import com.playtomic.tests.common.contracts.StripeChargeEvidence;
 import com.playtomic.tests.simulator.PaymentSimulatorApplication;
 import com.playtomic.tests.simulator.configs.SimulatorProps;
+import com.playtomic.tests.simulator.services.StripeEvidenceStore;
+import com.playtomic.tests.common.enums.StripeChargeStatus;
+import com.playtomic.tests.simulator.enums.SimulationScenario;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
@@ -63,18 +69,33 @@ class StripeSimulationControllerTest {
 
     @Test
     void timeoutDoesNotRespondWithinTheWalletsDefaultDeadline() {
-        var controller = new StripeSimulationController(new SimulatorProps(SimulatorProps.Scenario.TIMEOUT));
+        var controller = new StripeSimulationController(new SimulatorProps(SimulationScenario.TIMEOUT), org.mockito.Mockito.mock(StripeEvidenceStore.class));
         var request = new StripeSimulationController.ChargeRequest()
                 .setCreditCard("4242424242424242")
                 .setAmount(new BigDecimal("15.25"));
 
-        StepVerifier.withVirtualTime(() -> controller.charge(request))
+        StepVerifier.withVirtualTime(() -> controller.charge(request, null))
                 .expectSubscription()
                 .expectNoEvent(Duration.ofSeconds(9))
                 .thenAwait(Duration.ofSeconds(1))
                 .assertNext(response -> assertThat(response.getStatusCode()).isEqualTo(HttpStatus.GATEWAY_TIMEOUT))
                 .expectComplete()
                 .verify(Duration.ofSeconds(2));
+    }
+
+    @ParameterizedTest
+    @EnumSource(SimulationScenario.class)
+    void acceptedReplayReturnsOriginalReceiptRegardlessOfScenario(SimulationScenario scenario) {
+        var store = org.mockito.Mockito.mock(StripeEvidenceStore.class);
+        var reference = UUID.randomUUID();
+        var accepted = new StripeChargeEvidence(reference, StripeChargeStatus.ACCEPTED, "original", BigDecimal.ONE, "EUR");
+        org.mockito.Mockito.when(store.record(org.mockito.ArgumentMatchers.any())).thenReturn(reactor.core.publisher.Mono.just(accepted));
+        var controller = new StripeSimulationController(new SimulatorProps(scenario), store);
+        var request = new StripeSimulationController.ChargeRequest().setCreditCard("4242424242424242").setAmount(BigDecimal.ONE);
+        StepVerifier.create(controller.charge(request, reference)).assertNext(response -> {
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(response.getBody().getId()).isEqualTo("original");
+        }).verifyComplete();
     }
 
     private static ConfigurableApplicationContext start(String scenario) {

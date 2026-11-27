@@ -1,5 +1,6 @@
 package com.playtomic.tests.simulator.controllers;
 
+import com.playtomic.tests.common.enums.RedsysAuthorizationState;
 import com.playtomic.tests.common.utils.UuidV7Generator;
 import com.playtomic.tests.simulator.configs.SimulatorProps;
 import com.playtomic.tests.simulator.models.SimulationResponses;
@@ -19,7 +20,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.regex.Pattern;
 
-import static com.playtomic.tests.simulator.observability.SimulationOutcome.*;
+import static com.playtomic.tests.simulator.enums.SimulationOutcome.*;
 
 /** Inbound adapter for a local-only Redsys REST authorization fixture. */
 @RestController
@@ -65,17 +66,17 @@ public class RedsysSimulationController {
         }
 
         return switch (properties.getScenario()) {
-            case SUCCESS -> APPROVED.observe(Mono.just(result(order, amount, true)));
-            case REJECT -> REDSYS_DECLINED.observe(Mono.just(result(order, amount, false)));
+            case SUCCESS -> APPROVED.observe(Mono.just(result(order, amount, RedsysAuthorizationState.APPROVED)));
+            case REJECT -> REDSYS_DECLINED.observe(Mono.just(result(order, amount, RedsysAuthorizationState.DECLINED)));
             case TIMEOUT -> REDSYS_TIMEOUT.observe(SimulationResponses.timeout());
         };
     }
 
-    private ResponseEntity<Map<String, String>> result(String order, String amount, boolean approved) {
+    private ResponseEntity<Map<String, String>> result(String order, String amount, RedsysAuthorizationState state) {
         Map<String, String> parameters = new HashMap<>(Map.of("Ds_Order", order, "Ds_Amount", amount,
                 "Ds_Currency", CURRENCY, "Ds_TransactionType", AUTHORIZATION,
-                "Ds_Response", approved ? "0000" : "0101"));
-        if (approved) {
+                "Ds_Response", state.wireValue()));
+        if (state == RedsysAuthorizationState.APPROVED) {
             parameters.put("Ds_AuthorisationCode", UuidV7Generator.generate().toString().substring(24, 30));
         }
         String encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(json.writeValueAsBytes(parameters));

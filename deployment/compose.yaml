@@ -34,7 +34,11 @@ services:
     build:
       context: ..
       dockerfile: deployment/simulator.Dockerfile
+    depends_on:
+      mongo-init:
+        condition: service_completed_successfully
     environment:
+      - SIMULATOR_MONGODB_URI=${SIMULATOR_MONGODB_URI:-mongodb://mongo-1:27017,mongo-2:27017,mongo-3:27017/simulator?replicaSet=wallet-rs&w=majority&readConcernLevel=majority}
       - SERVER_ADDRESS=0.0.0.0
       - PAYMENT_SIMULATOR_SCENARIO=${PAYMENT_SIMULATOR_SCENARIO:-SUCCESS}
 

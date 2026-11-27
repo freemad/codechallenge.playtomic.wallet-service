@@ -1,5 +1,6 @@
 package com.playtomic.tests.wallet.services.adapter;
 
+import com.playtomic.tests.common.enums.RedsysAuthorizationState;
 import com.playtomic.tests.common.utils.ExceptionNormalizer;
 import com.playtomic.tests.wallet.dtos.FixtureWire.Authorization;
 import com.playtomic.tests.wallet.dtos.FixtureWire.Envelope;
@@ -74,10 +75,10 @@ public final class RedsysAdapter {
         }
         String code = text(parameters, "Ds_AuthorisationCode");
         String response = text(parameters, "Ds_Response");
-        if ("0101".equals(response) && !parameters.has("Ds_AuthorisationCode")) {
+        if (RedsysAuthorizationState.DECLINED.wireValue().equals(response) && !parameters.has("Ds_AuthorisationCode")) {
             return ProviderPaymentResult.declined();
         }
-        if ("0000".equals(response) && AUTHORIZATION_CODE.matcher(code).matches()) {
+        if (RedsysAuthorizationState.APPROVED.wireValue().equals(response) && AUTHORIZATION_CODE.matcher(code).matches()) {
             return ProviderPaymentResult.approved(code);
         }
         throw new IllegalStateException("Redsys authorization could not be confirmed");

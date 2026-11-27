@@ -1,6 +1,8 @@
 package com.playtomic.tests.wallet.http.stripe;
 
+import com.playtomic.tests.common.contracts.StripeChargeEvidence;
 import com.playtomic.tests.common.enums.CommonErrorCode;
+import com.playtomic.tests.common.enums.StripeChargeStatus;
 import com.playtomic.tests.common.exceptions.BusinessException;
 import com.playtomic.tests.common.configs.NonRetryingWebClientFactory;
 import com.playtomic.tests.wallet.configs.WalletPaymentProviderProps;
@@ -47,6 +49,7 @@ class StripeServiceTest {
     private final AtomicReference<CapturedRequest> request = new AtomicReference<>();
     private final AtomicInteger calls = new AtomicInteger();
     private final ReactorResourceFactory resources = new ReactorResourceFactory();
+    private StripeClient client;
     private DisposableServer server;
 
     @BeforeEach
@@ -66,13 +69,14 @@ class StripeServiceTest {
     @Test
     void sendsExactChargeAndReadsReceipt() {
         StripeAdapter adapter = startProvider(response -> json(response, 200, "{\"id\":\"payment-1\"}"));
-
-        StepVerifier.create(adapter.charge(CHARGE))
+        String reference = java.util.UUID.randomUUID().toString();
+        StepVerifier.create(adapter.charge(CHARGE).contextWrite(context -> context.put(StripeChargeEvidence.REFERENCE_HEADER, reference)))
                 .expectNext(new PaymentReceiptModel("payment-1"))
                 .expectComplete()
                 .verify(TEST_TIMEOUT);
 
         assertThat(request.get().getMethod()).isEqualTo("POST");
+        assertThat(request.get().getReference()).isEqualTo(reference);
         assertThat(request.get().getUri()).isEqualTo("/charges");
         var body = JsonMapper.builder().build().readTree(request.get().getBody());
         assertThat(body.propertyNames()).containsExactlyInAnyOrder("credit_card", "amount");
@@ -185,6 +189,19 @@ class StripeServiceTest {
         assertThat(request.get().getBody()).isEmpty();
     }
 
+    @Test
+    void lookupRequiresMatchingEvidenceAndNeverPosts() {
+        var reference = java.util.UUID.randomUUID();
+        startProvider(response -> calls.get() == 3 ? response.status(404).send().then() : json(response, 200,
+                "{\"reference\":\"%s\",\"status\":\"ACCEPTED\",\"receiptId\":\"receipt\",\"amount\":15.25,\"currency\":\"EUR\"}".formatted(reference)));
+        StepVerifier.create(client.lookup(reference)).expectNext(new StripeChargeEvidence(reference, StripeChargeStatus.ACCEPTED, "receipt", AMOUNT, "EUR")).verifyComplete();
+        assertThat(request.get().getUri()).isEqualTo("/charges/" + reference);
+        assertThat(request.get().getMethod()).isEqualTo("GET");
+        StepVerifier.create(client.lookup(java.util.UUID.randomUUID())).verifyComplete();
+        StepVerifier.create(client.lookup(reference)).verifyComplete();
+        assertThat(calls).hasValue(3);
+    }
+
     private StripeAdapter startProvider(Function<HttpServerResponse, Mono<Void>> reply) {
         return startProvider(reply, Duration.ofSeconds(12));
     }
@@ -196,7 +213,7 @@ class StripeServiceTest {
                 .handle((incoming, outgoing) -> incoming.receive().aggregate().asString()
                         .defaultIfEmpty("")
                         .flatMap(body -> {
-                            request.set(new CapturedRequest(incoming.method().name(), incoming.uri(), body));
+                            request.set(new CapturedRequest(incoming.method().name(), incoming.uri(), body, incoming.requestHeaders().get(StripeChargeEvidence.REFERENCE_HEADER)));
                             calls.incrementAndGet();
                             return reply.apply(outgoing);
                         }))
@@ -211,8 +228,8 @@ class StripeServiceTest {
         var props = new WalletPaymentProviderProps(Map.of(WalletPaymentProviderProps.STRIPE, stripe,
                 WalletPaymentProviderProps.PAYPAL, paypal, WalletPaymentProviderProps.REDSYS, redsys));
         var factory = new NonRetryingWebClientFactory(WebClient.builder(), resources);
-        return new StripeAdapter(new StripeClient(props, factory.create(stripe.getConnectTimeout())),
-                Mappers.getMapper(StripePaymentMapper.class));
+        client = new StripeClient(props, factory.create(stripe.getConnectTimeout()));
+        return new StripeAdapter(client, Mappers.getMapper(StripePaymentMapper.class));
     }
 
     private static Mono<Void> json(HttpServerResponse response, int status, String body) {
@@ -225,5 +242,6 @@ class StripeServiceTest {
         String method;
         String uri;
         String body;
+        String reference;
     }
 }

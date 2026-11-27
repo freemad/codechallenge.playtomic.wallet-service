@@ -98,6 +98,11 @@ public class WalletOperationEntityService implements IWalletEntityService<Wallet
                 .then();
     }
 
+    public Mono<Void> deferReview(WalletOperationModel operation) {
+        return repository.updateTimestampIfUnchanged(operation.getId(), WalletOperationMongoType.TOP_UP,
+                WalletOperationMongoStatus.REVIEW_REQUIRED, operation.getUpdatedAt(), Instant.now()).then();
+    }
+
     private Mono<WalletOperationModel> mapOperation(WalletOperationEntity entity) {
         return getMonoModelConverter().apply(entity)
                 .switchIfEmpty(Mono.error(() -> normalize(new IllegalStateException("Wallet operation could not be mapped"))));
