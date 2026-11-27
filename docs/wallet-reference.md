@@ -217,9 +217,15 @@ curl -i http://127.0.0.1:9999/v1/stripe-simulator/charges \
   --data '{"credit_card":"4242424242424242","amount":15.25}'
 ```
 
-Stripe returns `200` with a synthetic `id` in `SUCCESS` mode or `422` in
-`REJECT` mode. The wallet still requires a configured refund URI, but the
-simulator does not implement refunds.
+Stripe returns `200` with a synthetic `id` in `SUCCESS` mode or `422` in `REJECT` mode. The example above has no `X-Charge-Reference`, so there is nothing to look up later. The wallet still requires a configured refund URI, but the simulator does not implement refunds.
+
+For a wallet demo charge, use the `providerReference` saved on the wallet operation, **not** the wallet ID, idempotency key or receipt ID. With `REFERENCE` set to that UUID, this host-demo request is read-only:
+
+```sh
+curl -i "http://127.0.0.1:9999/v1/stripe-simulator/charges/${REFERENCE:?set the saved providerReference}"
+```
+
+A `200` returns `reference`, `status`, `amount`, `currency`, and a `receiptId` for acceptance. `404` means no decision was found, **not** that the payment was declined. The wallet sends the header and performs lookup only for a configured HTTP charge URI with host `127.0.0.1` or `simulator` and no user info, query or fragment. Use `127.0.0.1`, not `localhost`, for the host demo. See [Stripe evidence storage](#stripe-evidence-storage) for database configuration and replay semantics.
 
 ### PayPal orders and capture
 
@@ -264,6 +270,8 @@ markers, not cryptographic signatures.
 
 ### Scenarios and limits
 
+The shared `ProviderTransactionState` interface defines the wire token, not a common payment lifecycle. The enums in `common.enums` preserve Stripe `ACCEPTED`/`DECLINED`, PayPal `APPROVED`/`COMPLETED` (approval is not capture), and Redsys `0000`/`0101` (strings with leading zeros). `SimulationScenario` controls fixture behavior; `TIMEOUT` is not a stored transaction state.
+
 `SUCCESS` is the default. Restart with `--payment-simulator.scenario=REJECT` for
 declines, or `--payment-simulator.scenario=TIMEOUT` to delay payment responses
 by ten seconds before returning `504`. PayPal order creation works in every mode;
@@ -290,7 +298,7 @@ return the recorded result, not the current wallet balance.
 
 - `WALLET_AUDIT_ENABLED=true` enables the [daily UTC balance auditor and monitoring alert relay](wallet-balance-audit.md). Enroll verified openings and configure snapshot retention before enabling it.
 - `WALLET_RECONCILIATION_ENABLED=true` enables lease-led recovery and stale
-  payment review. The job never retries the provider call.
+  payment review. The worker can repeat the evidence GET, never the charge POST.
 - `WALLET_OUTBOX_ENABLED=true` enables the relay. Set
   `SPRING_KAFKA_BOOTSTRAP_SERVERS` and provision `wallet.events.v1` (override
   with `WALLET_OUTBOX_TOPIC`). Events use the wallet ID as the Kafka key.
