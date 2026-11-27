@@ -35,6 +35,12 @@ A passing run exits zero and removes its containers and volumes. Run the checker
 
 Spending and refunding purchases are interview discussion topics, not required HTTP routes. Spending exists internally; there is no public spend, refund or transaction-history API. The simulator demonstrates the provider boundary, not live payment processing or production authorization.
 
+## System architecture
+
+[![The demo wallet charges the local Stripe fixture once, then records the receipt and credits the balance in MongoDB. Optional workers reconcile uncertain charges, publish events and audit balances.](docs/system-architecture.svg)](docs/system-architecture.svg)
+
+Select the diagram to view it full size, or read the [architecture and recovery decisions](docs/SAD.md).
+
 ## Where to go next
 
 - [Scenario runbook](docs/run-wallet.md) — start or stop the stack, exercise individual outcomes, run concurrency and fault checks, and follow operator procedures.
