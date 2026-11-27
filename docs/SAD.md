@@ -4,12 +4,9 @@
 
 ## Context and deployment
 
-```text
-Client → wallet ── POST charge / GET evidence ──→ local Stripe fixture
-           │                                           │
-           ├── wallet transactions → playtomic DB      └── decisions → simulator DB
-           └── optional outbox relay → Kafka → consumers
-```
+[![Wallet architecture: the wallet owns accounting in MongoDB; the Stripe fixture owns charge decisions. After a timeout, reconciliation reads provider evidence over HTTP without issuing another charge.](system-architecture.svg)](system-architecture.svg)
+
+The diagram shows the Compose services and the top-up path enabled only in the separate loopback demo. Dashed arrows indicate opt-in workers; neither Kafka nor reconciliation is required for a normal credit.
 
 MongoDB is authoritative for wallet balances and recorded operations; only the payment provider can confirm a remote charge. The `wallet` and `simulator` Maven modules produce separate executables and images. `common` is a library for shared contracts, mapping, errors and instrumentation, not a network service. Base Compose supplies three Mongo members, no broker, and a wallet port published on host loopback. The acceptance demo uses a private loopback interface for both Java processes and its client. The simulator’s PayPal and Redsys routes are independent fixtures, not fallback charge paths.
 

@@ -1,0 +1,227 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1075" viewBox="0 0 1400 1075" role="img" aria-labelledby="title desc">
+  <title id="title">Wallet service system design</title>
+  <desc id="desc">Base Compose runs the wallet, local payment fixture and a three-member MongoDB replica set. The separate loopback demo exposes top-ups. Only the reservation winner charges. The fixture saves referenced decisions. A receipt is recorded before atomic credit; a missing reply leaves the wallet in review. Optional reconciliation reads matching evidence without charging again. The optional relay publishes wallet events, and the auditor publishes discrepancy alerts.</desc>
+  <style>
+    text { fill: #f8fafc; font: 14px system-ui, -apple-system, "Segoe UI", sans-serif }
+    .h1 { font-size: 28px; font-weight: 700 }
+    .sub { fill: #a9bccb; font-size: 14px }
+    .box-title { fill: #a5f3df; font-size: 18px; font-weight: 650 }
+    .card-title { font-size: 13.5px; font-weight: 600 }
+    .svc-title { font-size: 12.5px; font-weight: 600 }
+    .line { fill: #c9d6e0; font-size: 12.5px }
+    .small { fill: #c9d6e0; font-size: 12px }
+    .muted { fill: #a9bccb; font-size: 12.5px }
+    .mono { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: 12.5px; fill: #e2eaf0 }
+    .edge-label { fill: #a5f3df; font-size: 12px }
+    .warn { fill: #fbbf72 }
+    .box { fill: #0c1f2c; stroke: #3a5d73; stroke-width: 1.5 }
+    .card { fill: #15344a; stroke: #2f5268; stroke-width: 1 }
+    .opt { fill: #1d2f33; stroke: #fbbf72; stroke-width: 1.5; stroke-dasharray: 6 5 }
+    .chip { fill: #233a40; stroke: #6b5a3a; stroke-width: 1 }
+    .flow { stroke: #71e6c5; stroke-width: 2.5; fill: none; marker-end: url(#arrow) }
+    .flow-opt { stroke: #fbbf72; stroke-width: 2.5; fill: none; stroke-dasharray: 6 5; marker-end: url(#arrow-amber) }
+    .state { fill: #15344a; stroke: #71e6c5; stroke-width: 1.5 }
+    .state-end { fill: #15344a; stroke: #a9bccb; stroke-width: 1.5 }
+    .state-text { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: 12px; fill: #f8fafc }
+    .step-num { fill: #102635; stroke: #71e6c5; stroke-width: 1.5 }
+    .step-num-text { fill: #71e6c5; font-size: 13px; font-weight: 700 }
+    .tag { fill: #15344a; stroke: #3a5d73 }
+    .tag-text { fill: #a5f3df; font-size: 11.5px; font-weight: 600 }
+    .tag-out { fill: #2b2a20; stroke: #8a6d3b }
+    .tag-out-text { fill: #fbbf72; font-size: 11.5px; font-weight: 600 }
+  </style>
+  <defs>
+    <marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto"><path fill="#71e6c5" d="M0 0 L8 4 L0 8 Z"/></marker>
+    <marker id="arrow-amber" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto"><path fill="#fbbf72" d="M0 0 L8 4 L0 8 Z"/></marker>
+  </defs>
+
+  <rect width="1400" height="1075" rx="16" fill="#102635"/>
+
+  <!-- Heading -->
+  <text class="h1" x="30" y="50">Wallet service · system design</text>
+  <text class="sub" x="30" y="76">Compose topology · Spring WebFlux on JDK 25 · top-up path shown for the separate loopback demo</text>
+
+  <!-- Client -->
+  <rect class="box" x="30" y="142" width="140" height="90" rx="10"/>
+  <text class="box-title" x="100" y="178" text-anchor="middle">Client</text>
+  <text class="line" x="100" y="200" text-anchor="middle">HTTP · JSON v1</text>
+  <text class="muted" x="100" y="218" text-anchor="middle">any instance</text>
+  <path class="flow" d="M170 187 H207"/>
+
+  <!-- Wallet service -->
+  <rect class="box" x="210" y="100" width="610" height="460" rx="12"/>
+  <text class="box-title" x="232" y="128">Wallet service</text>
+  <text class="muted" x="798" y="128" text-anchor="end">stateless · one instance in base Compose</text>
+
+  <!-- API -->
+  <rect class="card" x="232" y="142" width="566" height="90" rx="8"/>
+  <text class="card-title" x="246" y="164">WalletControllerV1 · selected routes</text>
+  <text class="mono" x="246" y="186">GET  /api/v1/wallets/{id}</text>
+  <text class="mono" x="246" y="205">POST /api/v1/wallets/{id}/top-ups</text>
+  <text class="muted" x="246" y="223">POST: loopback demo only · one Idempotency-Key · synthetic card</text>
+
+  <!-- Services -->
+  <rect class="card" x="232" y="246" width="180" height="84" rx="8"/>
+  <text class="svc-title" x="242" y="268">WalletLookupService</text>
+  <text class="line" x="242" y="290">Read only</text>
+  <text class="line" x="242" y="308">404 when missing</text>
+
+  <rect class="card" x="425" y="246" width="180" height="84" rx="8"/>
+  <text class="svc-title" x="435" y="268">WalletMutationService</text>
+  <text class="line" x="435" y="290">Reserve → charge →</text>
+  <text class="line" x="435" y="308">receipt → settle</text>
+
+  <rect class="card" x="618" y="246" width="180" height="84" rx="8"/>
+  <text class="svc-title" x="628" y="268">WalletOperationService</text>
+  <text class="line" x="628" y="290">MongoDB transactions</text>
+  <text class="line" x="628" y="308">Conditional state changes</text>
+
+  <!-- Payment -->
+  <rect class="card" x="232" y="344" width="566" height="66" rx="8"/>
+  <text class="card-title" x="246" y="366">WalletTopUpProviders → StripeAdapter → StripeClient</text>
+  <text class="line" x="246" y="388">Circuit breaker · 5 s default timeout · no charge retry · local fixture: X-Charge-Reference</text>
+
+  <!-- Workers -->
+  <rect class="opt" x="232" y="424" width="566" height="121" rx="8"/>
+  <text class="card-title warn" x="246" y="446">Background workers · off by default</text>
+  <rect class="chip" x="244" y="458" width="174" height="77" rx="6"/>
+  <text class="svc-title" x="254" y="478">Reconciliation · job lease</text>
+  <text class="small" x="254" y="496">Stale pending → review</text>
+  <text class="small" x="254" y="512">GET evidence by reference</text>
+  <text class="small" x="254" y="528">Settles recorded receipts</text>
+  <rect class="chip" x="428" y="458" width="174" height="77" rx="6"/>
+  <text class="svc-title" x="438" y="478">Outbox relay</text>
+  <text class="small" x="438" y="496">Wallet events → Kafka</text>
+  <text class="small" x="438" y="512">At least once</text>
+  <text class="small" x="438" y="528">Claim per event</text>
+  <rect class="chip" x="612" y="458" width="174" height="77" rx="6"/>
+  <text class="svc-title" x="622" y="478">Balance audit</text>
+  <text class="small" x="622" y="496">Cutoff balance vs opening</text>
+  <text class="small" x="622" y="512">balance + ledger postings</text>
+  <text class="small" x="622" y="528">Claim wallet period / alert</text>
+
+  <!-- Payment simulator -->
+  <rect class="box" x="920" y="100" width="450" height="200" rx="12"/>
+  <text class="box-title" x="942" y="128">Payment simulator</text>
+  <text class="muted" x="1348" y="128" text-anchor="end">separate service · port 9999</text>
+  <rect class="card" x="942" y="142" width="406" height="110" rx="8"/>
+  <text class="card-title" x="956" y="164">Stripe fixture</text>
+  <text class="mono" x="956" y="186">POST /v1/stripe-simulator/charges</text>
+  <text class="mono" x="956" y="205">GET  /v1/stripe-simulator/charges/{reference}</text>
+  <text class="line" x="956" y="225">With a reference: persists the decision before replying</text>
+  <text class="line" x="956" y="243">Same reference → same decision · other amount → 409</text>
+  <text class="muted" x="942" y="280">PayPal and Redsys fixtures are present but not wired for top-ups</text>
+
+  <!-- MongoDB -->
+  <rect class="box" x="920" y="330" width="450" height="260" rx="12"/>
+  <text class="box-title" x="942" y="358">MongoDB replica set · wallet-rs</text>
+  <text class="muted" x="942" y="380">Primary reads · majority writes · transactions use snapshot reads</text>
+  <rect class="card" x="942" y="394" width="120" height="26" rx="13"/>
+  <text class="small" x="1002" y="411" text-anchor="middle">mongo-1</text>
+  <rect class="card" x="1072" y="394" width="120" height="26" rx="13"/>
+  <text class="small" x="1132" y="411" text-anchor="middle">mongo-2</text>
+  <rect class="card" x="1202" y="394" width="120" height="26" rx="13"/>
+  <text class="small" x="1262" y="411" text-anchor="middle">mongo-3</text>
+  <text class="card-title" x="942" y="448">playtomic · selected collections</text>
+  <text class="mono" x="942" y="469">wallets</text>
+  <text class="mono" x="942" y="486">wallet_operations</text>
+  <text class="mono" x="942" y="503">wallet_payment_receipts</text>
+  <text class="mono" x="942" y="520">wallet_ledger</text>
+  <text class="mono" x="942" y="537">wallet_outbox</text>
+  <text class="mono" x="942" y="554">wallet_job_leases</text>
+  <text class="mono" x="942" y="571">wallet_audit_schedule</text>
+  <text class="card-title" x="1190" y="448">simulator database</text>
+  <text class="mono" x="1190" y="469">stripe_charges</text>
+  <text class="muted" x="1190" y="489">Written only by the</text>
+  <text class="muted" x="1190" y="506">simulator; the wallet</text>
+  <text class="muted" x="1190" y="523">reads it over HTTP</text>
+
+  <!-- Kafka -->
+  <rect class="opt" x="920" y="610" width="450" height="76" rx="12"/>
+  <text class="box-title warn" x="942" y="636">Kafka</text>
+  <text class="muted" x="1348" y="636" text-anchor="end">optional · not in base Compose</text>
+  <text class="mono" x="942" y="658">wallet.events.v1 · wallet.audit.alerts.v1</text>
+  <text class="line" x="942" y="676">External consumers must deduplicate by eventId</text>
+
+  <!-- Edges -->
+  <path class="flow" d="M798 377 H860 V200 H918"/>
+  <text class="edge-label" x="866" y="296">charge</text>
+  <text class="edge-label" x="866" y="312">lookup</text>
+  <path class="flow" d="M820 470 H918"/>
+  <text class="edge-label" x="830" y="461">transactions</text>
+  <path class="flow" d="M1300 300 V328"/>
+  <text class="edge-label" x="1308" y="319">decisions</text>
+  <path class="flow-opt" d="M515 535 V648 H918"/>
+  <text class="edge-label warn" x="568" y="640">wallet events</text>
+  <path class="flow-opt" d="M699 535 V626 H918"/>
+  <text class="edge-label warn" x="737" y="618">audit alerts</text>
+
+  <!-- Legend -->
+  <path class="flow" d="M30 612 H70"/>
+  <text class="small" x="80" y="616">Request and data path</text>
+  <path class="flow-opt" d="M30 642 H70"/>
+  <text class="small" x="80" y="646">Opt-in, off by default</text>
+  <text class="muted" x="30" y="680">Card numbers are never stored or logged.</text>
+
+  <!-- Top-up path -->
+  <rect class="box" x="30" y="720" width="790" height="305" rx="12"/>
+  <text class="box-title" x="52" y="750">Top-up path</text>
+
+  <circle class="step-num" cx="64" cy="776" r="12"/><text class="step-num-text" x="64" y="781" text-anchor="middle">1</text>
+  <text class="card-title" x="88" y="781">Reserve</text>
+  <rect class="tag" x="152" y="767" width="96" height="20" rx="10"/><text class="tag-text" x="200" y="781" text-anchor="middle">1 transaction</text>
+  <text class="line" x="88" y="800">Reserve the wallet/key with a fresh provider reference. Only the reservation winner may charge.</text>
+
+  <circle class="step-num" cx="64" cy="830" r="12"/><text class="step-num-text" x="64" y="835" text-anchor="middle">2</text>
+  <text class="card-title" x="88" y="835">Charge</text>
+  <rect class="tag-out" x="146" y="821" width="150" height="20" rx="10"/><text class="tag-out-text" x="221" y="835" text-anchor="middle">outside any transaction</text>
+  <text class="line" x="88" y="854">POST to the Stripe fixture with X-Charge-Reference. 422 → payment_rejected · timeout → review_required (HTTP 202).</text>
+
+  <circle class="step-num" cx="64" cy="884" r="12"/><text class="step-num-text" x="64" y="889" text-anchor="middle">3</text>
+  <text class="card-title" x="88" y="889">Record receipt</text>
+  <rect class="tag" x="196" y="875" width="96" height="20" rx="10"/><text class="tag-text" x="244" y="889" text-anchor="middle">1 transaction</text>
+  <text class="line" x="88" y="908">Operation → RECEIPT_RECORDED, and insert the receipt keyed by the provider payment id.</text>
+
+  <circle class="step-num" cx="64" cy="938" r="12"/><text class="step-num-text" x="64" y="943" text-anchor="middle">4</text>
+  <text class="card-title" x="88" y="943">Settle</text>
+  <rect class="tag" x="140" y="929" width="96" height="20" rx="10"/><text class="tag-text" x="188" y="943" text-anchor="middle">1 transaction</text>
+  <text class="line" x="88" y="962">$inc the balance, append the ledger posting, operation → SUCCEEDED, insert the outbox event.</text>
+
+  <circle class="step-num" cx="64" cy="992" r="12"/><text class="step-num-text" x="64" y="997" text-anchor="middle">5</text>
+  <text class="card-title" x="88" y="997">Respond or replay</text>
+  <text class="line" x="88" y="1016">Return the stored outcome. A matching replay can settle a recorded receipt, never send another charge.</text>
+
+  <!-- State machine -->
+  <rect class="box" x="850" y="720" width="520" height="305" rx="12"/>
+  <text class="box-title" x="872" y="750">Top-up states</text>
+
+  <rect class="state" x="870" y="770" width="110" height="30" rx="15"/>
+  <text class="state-text" x="925" y="789" text-anchor="middle">PENDING</text>
+  <rect class="state" x="1040" y="770" width="170" height="30" rx="15"/>
+  <text class="state-text" x="1125" y="789" text-anchor="middle">RECEIPT_RECORDED</text>
+  <rect class="state-end" x="1260" y="770" width="100" height="30" rx="15"/>
+  <text class="state-text" x="1310" y="789" text-anchor="middle">SUCCEEDED</text>
+  <rect class="state" x="870" y="860" width="160" height="30" rx="15" style="stroke:#fbbf72"/>
+  <text class="state-text" x="950" y="879" text-anchor="middle">REVIEW_REQUIRED</text>
+  <rect class="state-end" x="1100" y="860" width="170" height="30" rx="15"/>
+  <text class="state-text" x="1185" y="879" text-anchor="middle">PAYMENT_REJECTED</text>
+
+  <path class="flow" d="M980 785 H1038"/>
+  <text class="edge-label" x="1010" y="776" text-anchor="middle">receipt</text>
+  <path class="flow" d="M1210 785 H1258"/>
+  <text class="edge-label" x="1235" y="776" text-anchor="middle">settle</text>
+  <path class="flow" d="M896 800 V858"/>
+  <text class="edge-label" x="902" y="821">timeout</text>
+  <path class="flow-opt" d="M966 800 V858"/>
+  <text class="edge-label warn" x="972" y="843">stale</text>
+  <path class="flow-opt" d="M1010 860 L1098 802"/>
+  <text class="edge-label warn" x="1064" y="842">GET: accepted</text>
+  <path class="flow-opt" d="M1030 875 H1098"/>
+  <text class="edge-label warn" x="1065" y="908" text-anchor="middle">GET: declined</text>
+
+  <text class="small" x="872" y="940">GET exits review only on matching evidence; no match means no credit.</text>
+  <text class="small" x="872" y="960">PENDING → PAYMENT_REJECTED on a confirmed Stripe decline.</text>
+  <text class="small" x="872" y="980">PENDING → PROVIDER_UNAVAILABLE if the open circuit prevents dispatch.</text>
+
+  <text class="muted" x="30" y="1058">Evidence lookup: local HTTP fixture only (127.0.0.1 or simulator). Kafka delivery requires a configured broker; in Compose, pass WALLET_OUTBOX_ENABLED via an override to enable the event relay.</text>
+</svg>
